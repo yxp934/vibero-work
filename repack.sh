@@ -7,7 +7,7 @@ BUILD_DIR="$ROOT_DIR/build"
 OUTPUT_JA="$BUILD_DIR/omni.ja"
 
 INSTALL_MODE=0
-APP_PATH="/Users/yxp/Downloads/Vibero.app"
+APP_PATH="${VIBERO_APP_PATH:-}"
 
 usage() {
   cat <<'EOF'
@@ -19,6 +19,7 @@ Usage:
 Behavior:
   - Always rebuilds build/omni.ja from ./omni
   - With --install, also backs up and replaces the app's omni.ja
+  - Target app path can be passed explicitly or via VIBERO_APP_PATH
 EOF
 }
 
@@ -55,6 +56,11 @@ rm -f "$OUTPUT_JA"
 echo "Built: $OUTPUT_JA"
 
 if [[ "$INSTALL_MODE" -eq 1 ]]; then
+  if [[ -z "$APP_PATH" ]]; then
+    echo "Missing target app path. Pass /path/to/Vibero.app or set VIBERO_APP_PATH." >&2
+    exit 1
+  fi
+
   APP_OMNI="$APP_PATH/Contents/Resources/app/omni.ja"
   if [[ ! -f "$APP_OMNI" ]]; then
     echo "Target app omni.ja not found: $APP_OMNI" >&2
