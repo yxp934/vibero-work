@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account Status</title>
+    <style>
+        /* ========== Notion Style Design System ========== */
+        :root {
+            --notion-bg: #ffffff;
+            --notion-sidebar: #f7f6f3;
+            --notion-text: #37352f;
+            --notion-text-muted: #787774;
+            --notion-border: rgba(55, 53, 47, 0.1);
+            --notion-hover: rgba(55, 53, 47, 0.04);
+            --notion-badge-bg: rgba(55, 53, 47, 0.08);
+            --notion-accent: #000000;
+
+            --success-bg: #edf6f2;
+            --success-text: #0f7b5f;
+            --error-bg: #fdf2f2;
+            --error-text: #d44040;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --notion-bg: #191919;
+                --notion-sidebar: #202020;
+                --notion-text: #ffffff;
+                --notion-text-muted: #9b9b9b;
+                --notion-border: rgba(255, 255, 255, 0.1);
+                --notion-hover: rgba(255, 255, 255, 0.05);
+                --notion-badge-bg: rgba(255, 255, 255, 0.1);
+                --notion-accent: #ffffff;
+
+                --success-bg: rgba(15, 123, 95, 0.15);
+                --success-text: #2ea785;
+                --error-bg: rgba(212, 64, 64, 0.15);
+                --error-text: #ff7373;
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+            background: var(--notion-bg);
+            color: var(--notion-text);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            /* 垂直居中 */
+            align-items: center;
+            /* 水平居中 */
+            padding: 20px;
+        }
+
+        #root {
+            width: 100%;
+            max-width: 400px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ========== Typography & Headers ========== */
+        .page-title {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            letter-spacing: -0.02em;
+            text-align: center;
+            /* 标题文字居中 */
+        }
+
+        /* ========== Auth Views ========== */
+        #login-view {
+            animation: fadeIn 0.3s ease;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--notion-text-muted);
+            margin-bottom: 6px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--notion-sidebar);
+            border: 1px solid var(--notion-border);
+            border-radius: 8px;
+            color: var(--notion-text);
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus {
+            border-color: var(--notion-text-muted);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid var(--notion-border);
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: var(--notion-accent);
+            color: var(--notion-bg);
+            border: none;
+            width: 100%;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.85;
+            transform: translateY(-1px);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--notion-text);
+            width: auto;
+            padding: 4px;
+            border: none;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+
+        .btn-ghost:hover {
+            background: var(--notion-hover);
+            opacity: 1;
+        }
+
+        /* ========== Account Info (Logged In) ========== */
+        .profile-section {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            margin-bottom: 24px;
+        }
+
+        .user-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            margin-bottom: 4px;
+        }
+
+        .user-email {
+            font-size: 17px;
+            font-weight: 600;
+        }
+
+        .sub-meta {
+            display: flex;
+            align-items: center;
+            /* 改为居中对齐 */
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            background: var(--notion-badge-bg);
+            color: var(--notion-text);
+        }
+
+        .badge.pro {
+            background: #f1f0ff;
+            color: #6a1b9a;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .badge.pro {
+                background: #3c245c;
+                color: #d1b3ff;
+            }
+        }
+
+        .expiry-text {
+            font-size: 12px;
+            color: var(--notion-text-muted);
+        }
+
+        /* ========== Balance Section ========== */
+        .balance-section {
+            margin-bottom: 24px;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--notion-border);
+        }
+
+        .section-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--notion-text-muted);
+        }
+
+        .refresh-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            color: var(--notion-text-muted);
+            display: flex;
+            transition: background 0.2s;
+        }
+
+        .refresh-btn:hover {
+            background: var(--notion-hover);
+            color: var(--notion-text);
+        }
+
+        .refresh-btn.loading svg {
+            animation: spin 1s linear infinite;
+        }
+
+        .balance-grid {
+            display: grid;
+            gap: 12px;
+        }
+
+        .balance-card {
+            padding: 12px 16px;
+            background: var(--notion-sidebar);
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .balance-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .balance-label {
+            font-size: 13px;
+            color: var(--notion-text-muted);
+        }
+
+        .balance-main-value {
+            font-size: 20px;
+            font-weight: 600;
+            margin-top: 2px;
+        }
+
+        .balance-detail {
+            font-size: 11px;
+            color: var(--notion-text-muted);
+            margin-top: 2px;
+        }
+
+        /* ========== Utility ========== */
+        .status-box {
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .status-box.success {
+            display: block;
+            background: var(--success-bg);
+            color: var(--success-text);
+        }
+
+        .status-box.error {
+            display: block;
+            background: var(--error-bg);
+            color: var(--error-text);
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(4px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        #balance-loading-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.7);
+            z-index: 10;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root">
+        <h1 class="page-title" id="page-title">账户中心</h1>
+
+        <div id="status-message" class="status-box"></div>
+
+        <!-- Login View -->
+        <div id="login-view">
+            <form id="auth-form">
+                <div class="form-group">
+                    <label class="form-label">邮箱地址</label>
+                    <input type="email" class="form-input" id="email" placeholder="example@email.com" required />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">账户密码</label>
+                    <input type="password" class="form-input" id="password" placeholder="••••••••" required />
+                </div>
+                <button type="submit" class="btn btn-primary" id="submit-btn" style="margin-top: 8px;">登录</button>
+            </form>
+        </div>
+
+        <!-- Logged In View -->
+        <div id="logged-in-view" style="display: none;">
+            <div class="profile-section">
+                <div class="user-header-row">
+                    <div class="user-email" id="user-email">...</div>
+                    <button class="btn btn-ghost" id="logout-btn" title="退出登录">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                            <polyline points="16 17 21 12 16 7"></polyline>
+                            <line x1="21" y1="12" x2="9" y2="12"></line>
+                        </svg>
+                    </button>
+                </div>
+                <div class="sub-meta">
+                    <span class="badge" id="sub-status">...</span>
+                    <span class="expiry-text" id="sub-date" style="line-height: 1.4;"></span>
+                    <a id="buy-link" href="#"
+                        onclick="event.preventDefault(); openExternalURL('https://vibero.dev/#pricing');"
+                        style="display: none; font-size: 12px; color: #2383e2; text-decoration: underline; cursor: pointer;">购买余额</a>
+                </div>
+            </div>
+
+            <div class="balance-section">
+                <div class="section-header">
+                    <span class="section-title">资源用量</span>
+                    <button id="refresh-balance-btn" class="refresh-btn" title="点击刷新">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M23 4v6h-6"></path>
+                            <path d="M1 20v-6h6"></path>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="balance-grid">
+                    <!-- Card 1: Unified Credits -->
+                    <div class="balance-card" style="grid-column: span 2;">
+                        <div class="balance-info" style="width: 100%;">
+                            <span class="balance-label">Credits</span>
+                            <div class="balance-main-value">
+                                <span id="credits-balance">0</span>
+                            </div>
+                            <span class="balance-detail" id="credits-detail"></span>
+
+                            <div
+                                style="margin-top: 10px; border-top: 1px dotted var(--notion-border); padding-top: 8px;">
+                                <span class="balance-detail" style="color: var(--notion-text-muted);">1页论文解析 = 1
+                                    Credit，1次AI对话 =
+                                    8 Credits</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Keep hidden for reference if needed, but UI is moved -->
+            <button class="btn btn-ghost" id="logout-btn-legacy" style="display: none;">退出登录</button>
+        </div>
+    </div>
+
+    <script>
+        // Supabase Configuration
+        let SUPABASE_URL = '';
+        let SUPABASE_ANON_KEY = '';
+
+        try {
+            if (window.parent && window.parent.Zotero && window.parent.Zotero.VibeDBSync) {
+                const config = window.parent.Zotero.VibeDBSync.getSupabaseConfig();
+                SUPABASE_URL = config.url;
+                SUPABASE_ANON_KEY = config.anonKey;
+            }
+        } catch (e) {
+            console.error('Config failed:', e);
+        }
+
+        const supabaseAuth = {
+            _session: null,
+            async signInWithPassword({ email, password }) {
+                const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await response.json();
+                if (!response.ok) return { data: null, error: { message: data.error_description || data.msg || '登录失败' } };
+
+                this._session = data;
+                if (window.parent.Zotero && window.parent.Zotero.VibeDBSync) {
+                    window.parent.Zotero.VibeDBSync._supabaseSession = data;
+                    window.parent.Zotero.VibeDBSync._saveSessionToPrefs(data);
+                }
+                return { data: { user: data.user, session: data }, error: null };
+            },
+            async getUser() {
+                let session = this._session;
+                if (!session && window.parent.Zotero && window.parent.Zotero.VibeDBSync) {
+                    session = window.parent.Zotero.VibeDBSync._loadSessionFromPrefs();
+                    this._session = session;
+                }
+                if (!session) return { data: { user: null }, error: null };
+
+                try {
+                    const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+                        method: 'GET',
+                        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${session.access_token}` }
+                    });
+                    if (!response.ok) return { data: { user: null }, error: null };
+                    const user = await response.json();
+                    return { data: { user }, error: null };
+                } catch (e) {
+                    return { data: { user: null }, error: e };
+                }
+            },
+            async signOut() {
+                this._session = null;
+                if (window.parent.Zotero && window.parent.Zotero.VibeDBSync) {
+                    window.parent.Zotero.VibeDBSync.clearUser();
+                }
+                return { error: null };
+            }
+        };
+
+        // DOM Elements
+        const loginView = document.getElementById('login-view');
+        const loggedInView = document.getElementById('logged-in-view');
+        const statusMsg = document.getElementById('status-message');
+        const pageTitle = document.getElementById('page-title');
+
+        // Initialize
+        async function init() {
+            const { data } = await supabaseAuth.getUser();
+            if (data?.user) {
+                showLoggedInView(data.user);
+            } else {
+                showLoginView();
+            }
+        }
+
+        function showLoginView() {
+            loginView.style.display = 'block';
+            loggedInView.style.display = 'none';
+            pageTitle.textContent = '账户登录';
+
+            // 重置表单：确保表单中所有输入框和按钮都是可交互状态
+            // 防止之前登录流程中 disabled 状态未被正确清除
+            const emailInput = document.getElementById('email');
+            const passwordInput = document.getElementById('password');
+            const submitBtn = document.getElementById('submit-btn');
+
+            if (emailInput) {
+                emailInput.disabled = false;
+                emailInput.style.pointerEvents = '';
+                emailInput.tabIndex = 0;
+                emailInput.value = ''; // 清空邮箱输入框
+            }
+            if (passwordInput) {
+                passwordInput.disabled = false;
+                passwordInput.style.pointerEvents = '';
+                passwordInput.tabIndex = 0;
+                passwordInput.value = ''; // 清空密码输入框
+            }
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '登录';
+                submitBtn.style.opacity = '';
+                submitBtn.style.cursor = '';
+            }
+
+            // 延迟聚焦到邮箱输入框（延迟足够长，确保 DOM 渲染和面板动画完成）
+            setTimeout(() => {
+                const email = document.getElementById('email');
+                if (email && !email.disabled) {
+                    try {
+                        email.focus();
+                    } catch (e) {
+                        // 部分沙盒环境下 focus 可能抛出异常，忽略即可
+                    }
+                }
+            }, 500);
+        }
+
+        function showLoggedInView(user) {
+            loginView.style.display = 'none';
+            loggedInView.style.display = 'block';
+            pageTitle.textContent = '账户中心';
+            document.getElementById('user-email').textContent = user.email;
+
+            // 重要：确保用户信息同步回 Zotero 主程序
+            if (window.parent && window.parent.Zotero && window.parent.Zotero.VibeDBSync) {
+                window.parent.Zotero.VibeDBSync.setUser({
+                    id: user.id,
+                    email: user.email
+                });
+            }
+
+            loadUserBalance();
+        }
+
+        function openExternalURL(url) {
+            try {
+                if (window.parent && window.parent.Zotero && window.parent.Zotero.launchURL) {
+                    window.parent.Zotero.launchURL(url);
+                } else {
+                    window.open(url, '_blank');
+                }
+            } catch (e) {
+                console.error(e);
+                window.open(url, '_blank');
+            }
+        }
+
+        function showStatus(type, message) {
+            statusMsg.textContent = message;
+            statusMsg.className = `status-box ${type}`;
+            statusMsg.style.display = 'block';
+            setTimeout(() => {
+                statusMsg.style.opacity = '0';
+                setTimeout(() => { statusMsg.style.display = 'none'; statusMsg.style.opacity = '1'; }, 300);
+            }, 3000);
+        }
+
+        async function loadUserBalance() {
+            const refreshBtn = document.getElementById('refresh-balance-btn');
+            if (refreshBtn) refreshBtn.classList.add('loading');
+
+            try {
+                if (!window.parent.Zotero?.VibeDBSync) return;
+                const balance = await window.parent.Zotero.VibeDBSync.getUserBalance();
+
+                if (balance) {
+                    const subInfo = balance.subscription_info;
+                    const ub = balance.user_balance_detail || {};
+
+                    const subStatus = document.getElementById('sub-status');
+                    const subDate = document.getElementById('sub-date');
+
+                    if (subInfo && subInfo.status === 'active') {
+                        const tierName = { 'LITE': 'Lite', 'PRO': 'Pro', 'ULTIMATE': 'Ultimate' }[subInfo.plan_tier] || subInfo.plan_tier;
+                        subStatus.textContent = tierName;
+                        subStatus.className = 'badge pro';
+
+                        const now = new Date();
+                        const expiryDate = new Date(subInfo.current_period_end);
+                        const daysLeft = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
+
+                        let dateHtml = `还有 ${daysLeft} 天到期`;
+
+                        if (subInfo.billing_cycle === 'YEARLY' && subInfo.last_balance_reset) {
+                            const nextReset = new Date(new Date(subInfo.last_balance_reset).getTime() + (30 * 24 * 60 * 60 * 1000));
+                            const resetDaysLeft = Math.ceil((nextReset - now) / (1000 * 60 * 60 * 24));
+                            if (resetDaysLeft > 0) {
+                                dateHtml += `<br>还有 ${resetDaysLeft} 天重置月度额度`;
+                            }
+                        }
+                        subDate.innerHTML = dateHtml;
+
+                        const subTotal = subInfo.credits_quota || 0;
+                        const subUsed = subInfo.credits_used || 0;
+                        const subRemain = Math.max(0, subTotal - subUsed);
+
+                        document.getElementById('credits-balance').textContent = balance.credits || 0;
+                        document.getElementById('credits-detail').textContent = `订阅剩余 ${subRemain} / 总额 ${subTotal} + 非订阅 ${ub.credits || 0}`;
+                    } else {
+                        subStatus.textContent = 'Free';
+                        subStatus.className = 'badge';
+                        subDate.textContent = ''; // 去掉“无订阅套餐”字样
+
+                        document.getElementById('credits-balance').textContent = balance.credits || 0;
+                        document.getElementById('credits-detail').textContent = `非订阅 ${ub.credits || 0}`;
+
+                        const buyLink = document.getElementById('buy-link');
+                        if (buyLink) buyLink.style.display = 'inline';
+                    }
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                if (refreshBtn) refreshBtn.classList.remove('loading');
+            }
+        }
+
+        // Event Listeners
+        document.getElementById('auth-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            const submitBtn = document.getElementById('submit-btn');
+            const originalText = submitBtn.textContent;
+            submitBtn.textContent = '登录中...';
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = '0.7';
+            submitBtn.style.cursor = 'not-allowed';
+
+            try {
+                const { data, error } = await supabaseAuth.signInWithPassword({ email, password });
+
+                if (error) {
+                    showStatus('error', error.message);
+                } else {
+                    showLoggedInView(data.user);
+                }
+            } finally {
+                submitBtn.textContent = originalText;
+                submitBtn.disabled = false;
+                submitBtn.style.opacity = '';
+                submitBtn.style.cursor = '';
+            }
+        });
+
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+            await supabaseAuth.signOut();
+            showLoginView();
+        });
+
+        document.getElementById('refresh-balance-btn').addEventListener('click', loadUserBalance);
+
+        window.refreshBalance = loadUserBalance;
+        window.showLoginView = showLoginView;
+        window.showStatus = showStatus;
+
+        init();
+    </script>
+</body>
+
+</html>

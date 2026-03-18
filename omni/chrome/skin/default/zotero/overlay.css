@@ -1,0 +1,183 @@
+.items-tree-message {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	width: 100%;
+}
+
+.items-tree-message div {
+	padding: 0 65px;
+}
+
+.items-tree-message p {
+	max-width: 800px;
+	font-size: 1.45em;
+	line-height: 1.7em;
+	text-align: left;
+}
+
+.items-tree-message div.publications p {
+	font-size: 1.2em;
+}
+
+/* Increase size when window is wider */
+#zotero-pane.width-1000 .items-tree-message div.publications p {
+	font-size: 1.35em;
+}
+
+.items-tree-message span.text-link {
+	color: rgb(0, 149, 221);
+	cursor: pointer;
+	text-decoration: underline;
+}
+
+
+
+/* 
+	Fix to odd fx115 behavior that gives an un-collapsed pane the initial width of min-width + last width
+*/
+#zotero-collections-pane[collapsed=true] {
+	min-width: 0px !important;
+	width: 0px !important;
+}
+
+#zotero-pane toolbarseparator {
+	height:24px;
+}
+
+.zotero-button-clear-image {
+  list-style-image: none
+}
+
+#zotero-collections-tree, #zotero-items-tree, #zotero-item-pane > groupbox
+{
+	margin: 0;
+	padding: 0;
+}
+
+#zotero-lookup-textbox {
+	margin: 4px;
+	padding: 2px;
+	overflow-x: hidden; /* Fixes a glitch that renders an extra row */
+}
+
+#zotero-lookup-panel {
+	min-height: 100px;
+	min-width: 500px;
+}
+
+#zotero-lookup-multiline-progress {
+	height: 2em;
+}
+
+#zotero-tb-sync-progress
+{
+	min-width: 50px;
+	width: 50px;
+	height: 10px;
+	margin-inline-start: 0;
+}
+
+#zotero-tb-sync-progress-tooltip-progress {
+	margin-bottom: 5px;
+}
+
+/* Library names */
+#zotero-tb-sync-progress-tooltip rows > label
+{
+	font-weight: 600;
+	margin-top: 8px;
+}
+
+/* Queue names */
+#zotero-tb-sync-progress-tooltip row:not(.library-name) label:first-child
+{
+	text-align: right;
+}
+
+
+/* Sync error panel */
+#zotero-sync-error-panel, #zotero-sync-reminder-panel {
+	margin-inline-end: 0;
+}
+
+#zotero-sync-error-panel .error-header, #zotero-sync-reminder-panel .header {
+	font-size: 14px;
+	font-weight: 600;
+	margin-bottom: 1em;
+	-moz-user-select: text;
+	cursor: text
+}
+
+.zotero-sync-error-panel-library-name {
+	font-size: 12px;
+	font-weight: 600;
+	margin-left: 0;
+	margin-bottom: 1.1em;
+}
+
+#zotero-sync-error-panel description, #zotero-sync-reminder-panel description {
+	width: 370px;
+	white-space: pre-wrap;
+}
+
+#zotero-sync-error-panel-buttons {
+	margin-top: 1em;
+	justify-content: end;
+	gap: 8px;
+}
+
+.zotero-toolbar
+{
+	visibility: visible !important;
+	display: inherit !important;
+}
+
+#zotero-tab-cover {
+	z-index: 2;
+	left: 0;
+	right: 0;
+	color: var(--fill-primary);
+	background-color: var(--material-background);
+	position: fixed;
+	height: 100%;
+	display: flex;
+}
+
+#zotero-tab-cover.hidden {
+	display: none;
+}
+
+#zotero-tab-cover label {
+	padding-top: 30px;
+	flex-grow: 1;
+	text-align: center;
+}
+
+.zotero-box {
+	margin-inline-start: 5px;
+}
+
+.zotero-box-icon {
+	width: 16px;
+	height: 16px;
+}
+
+/* Missing in Fx60 */
+.autocomplete-richlistbox {
+	border: 1px solid transparent;
+	min-height: 1.8em;
+}
+
+.autocomplete-richlistitem {
+	font: message-box;
+	padding: 1px;
+	height: 1.5em;
+	min-height: 1.5em;
+}
+
+.autocomplete-richlistitem[selected] {
+	background-color: Highlight;
+	color: HighlightText;
+}

@@ -1,0 +1,24 @@
+content activity-stream browser/content/activity-stream/ contentaccessible=yes
+content branding browser/content/branding/ contentaccessible=yes
+content browser browser/content/browser/ contentaccessible=yes
+content pocket browser/content/pocket/ contentaccessible=yes
+content screenshots-overlay browser/overlay/
+locale app-marketplace-icons en-US browser/locale/en-US/app-marketplace-icons/
+skin browser classic/1.0 browser/skin/classic/browser/
+content devtools-startup devtools-startup/content/
+content devtools devtools/content/
+content devtools-jsonview-styles devtools/modules/devtools/client/jsonview/css/ contentaccessible=yes
+skin devtools classic/1.0 devtools/skin/
+locale branding en-US en-US/locale/branding/
+locale browser en-US en-US/locale/browser/
+locale browser-region en-US en-US/locale/browser-region/
+locale devtools en-US en-US/locale/en-US/devtools/client/
+locale devtools-shared en-US en-US/locale/en-US/devtools/shared/
+resource activity-stream browser/res/activity-stream/ contentaccessible=yes
+resource builtin-addons browser/builtin-addons/ contentaccessible=yes
+resource builtin-themes browser/content/builtin-themes/
+resource search-extensions browser/search-extensions/ contentaccessible=yes
+resource usercontext-content browser/content/ contentaccessible=yes
+resource devtools devtools/modules/devtools/
+resource devtools-highlighter-styles resource://devtools/server/actors/highlighters/css/ contentaccessible=yes
+resource devtools-shared-images resource://devtools/shared/images/ contentaccessible=true

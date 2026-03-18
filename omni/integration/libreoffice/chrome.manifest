@@ -1,0 +1,3 @@
+content		zotero-libreoffice-integration chrome/
+content		zotero-libreoffice-integration-components components/
+resource	zotero-libreoffice-integration resource/

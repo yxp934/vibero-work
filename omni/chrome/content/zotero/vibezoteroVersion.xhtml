@@ -1,0 +1,125 @@
+<?xml version="1.0"?>
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://zotero/skin/zotero.css" type="text/css"?>
+<?xml-stylesheet href="chrome://zotero/skin/about.css" type="text/css"?>
+<?xml-stylesheet href="chrome://zotero-platform/content/zotero.css" type="text/css"?>
+<!DOCTYPE window SYSTEM "chrome://zotero/locale/about.dtd">
+
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+	onload="moveToAlertPosition(); sizeToContent(); document.getElementById('vibezotero-version-dialog').getButton('extra1').focus();"
+	inwindowmenu="false">
+	<script>
+		Services.scriptloader.loadSubScript("chrome://zotero/content/include.js", this);
+		Services.scriptloader.loadSubScript("chrome://zotero/content/customElements.js", this);
+	</script>
+	<dialog id="vibezotero-version-dialog" class="zotero-window" buttons="" ondialogaccept="return true;">
+
+		<vbox id="vibezotero-version-content" class="zotero-dialog">
+			<!-- 标题 -->
+			<hbox align="center" style="margin-bottom: 20px;">
+				<div xmlns="http://www.w3.org/1999/xhtml" style="margin-right: 15px;">
+					<img id="logo" src="chrome://zotero/skin/zotero.svg" alt="Zotero"
+						style="width: 48px; height: 48px;" />
+				</div>
+				<vbox>
+					<label style="font-size: 18px; font-weight: bold;">Vibero</label>
+					<label id="version-label" style="font-size: 14px; color: #666;"></label>
+				</vbox>
+			</hbox>
+
+			<!-- 版本信息 -->
+			<vbox style="border: 1px solid #ddd; padding: 15px; border-radius: 4px; background-color: #f9f9f9;">
+				<hbox align="center">
+					<label style="font-weight: bold; width: 100px;">当前版本:</label>
+					<label id="current-version" style="margin-right: 10px;"></label>
+					<button id="check-update-btn" label="检查更新" style="padding: 4px 12px; font-size: 12px;" />
+				</hbox>
+				<hbox style="margin-top: 10px;">
+					<label style="font-weight: bold; width: 100px;">平台:</label>
+					<label id="platform-label" style="flex: 1;"></label>
+				</hbox>
+				<hbox style="margin-top: 10px;">
+					<label style="font-weight: bold; width: 100px;">更新状态:</label>
+					<label id="update-status" style="flex: 1; color: #666;">点击"检查更新"查看最新版本</label>
+				</hbox>
+			</vbox>
+		</vbox>
+
+		<script>
+			// 加载必要的脚本以访问 Services 和其他全局对象
+			Services.scriptloader.loadSubScript("chrome://zotero/content/include.js", this);
+
+			// 初始化窗口
+			async function initWindow() {
+				console.log('[Vibero版本窗口] 初始化窗口');
+				try {
+					// 直接从 Prefs 读取版本号
+					// 注意：更新脚本会在替换应用后更新这个值
+					let currentVersion = Services.prefs.getCharPref('extensions.zotero.vibeZotero.version', '1.0.0');
+					console.log('[Vibero版本窗口] 当前版本:', currentVersion);
+
+					// 设置版本号
+					document.getElementById('version-label').textContent = `v${currentVersion}`;
+					document.getElementById('current-version').textContent = currentVersion;
+
+					// 检测平台
+					let platform = 'macOS';
+					if (Zotero.isWin) {
+						platform = 'Windows';
+					} else if (Zotero.isLinux) {
+						platform = 'Linux';
+					}
+					console.log('[Vibero版本窗口] 平台:', platform);
+					document.getElementById('platform-label').textContent = platform;
+
+					// 初始化更新日志
+					let changelog = document.getElementById('changelog');
+					changelog.value = `VibeZotero v${currentVersion}\n\n` +
+						`发布日期: ${new Date().toLocaleDateString('zh-CN')}\n\n` +
+						`功能:\n` +
+						`• 独立版本管理系统\n` +
+						`• OTA 自动更新\n` +
+						`• 多平台支持\n\n` +
+						`点击"检查更新"按钮查看是否有新版本可用。`;
+
+					// 绑定按钮事件
+					console.log('[Vibero版本窗口] 绑定按钮事件');
+					document.getElementById('check-update-btn').addEventListener('click', checkForUpdates);
+
+					console.log('[Vibero版本窗口] 初始化完成');
+				} catch (e) {
+					console.error('[Vibero版本窗口] 初始化出错:', e);
+					Zotero.logError(e);
+				}
+			}
+
+			// 检查更新
+			async function checkForUpdates() {
+				console.log('[Vibero版本窗口] 点击检查更新按钮');
+				let statusLabel = document.getElementById('update-status');
+				statusLabel.textContent = '正在检查更新...';
+				statusLabel.style.color = '#666';
+
+				try {
+					console.log('[Vibero版本窗口] 调用 Zotero.checkVibeZoteroUpdates()');
+					await Zotero.checkVibeZoteroUpdates();
+					// 更新完成后刷新状态
+					let currentVersion = Services.prefs.getCharPref('extensions.zotero.vibeZotero.version', '1.0.0');
+					document.getElementById('current-version').textContent = currentVersion;
+					document.getElementById('version-label').textContent = `v${currentVersion}`;
+					statusLabel.textContent = '已检查，VibeZotero 已是最新版本';
+					statusLabel.style.color = '#28a745';
+					console.log('[Vibero版本窗口] 检查更新完成');
+				} catch (e) {
+					console.error('[Vibero版本窗口] 检查更新出错:', e);
+					statusLabel.textContent = '检查更新失败，请稍后重试';
+					statusLabel.style.color = '#dc3545';
+					Zotero.logError(e);
+				}
+			}
+
+			// 页面加载完成后初始化
+			window.addEventListener('load', initWindow);
+		</script>
+	</dialog>
+</window>

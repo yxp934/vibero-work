@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            /* 浅色模式背景 - 与 Zotero 主题保持一致 */
+            background: #f2f2f2;
+            color: #000000d9;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        /* 暗夜模式 - 跟随系统主题 */
+        @media (prefers-color-scheme: dark) {
+
+            html,
+            body {
+                background: #303030;
+                color: #ffffffe5;
+            }
+        }
+
+        .container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+        }
+
+        /* 输入区域 - 占满整个容器 */
+        .input-wrapper {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            background: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 0 8px 0 16px;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .input-wrapper:focus-within {
+            border-color: #37352f;
+            box-shadow: 0 0 0 1px #37352f;
+        }
+
+        .input-box {
+            flex: 1;
+            height: 100%;
+            border: none;
+            outline: none;
+            padding: 0;
+            font-size: 15px;
+            font-family: inherit;
+            color: #37352f;
+            background: transparent;
+            line-height: 1.5;
+        }
+
+        .input-box::placeholder {
+            color: #9b9a97;
+        }
+
+        .send-btn {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            border: none;
+            border-radius: 50%;
+            background: #37352f;
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 8px;
+            transition: background 0.15s ease;
+            flex-shrink: 0;
+        }
+
+        .send-btn:hover:not(:disabled) {
+            background: #000000;
+        }
+
+        .send-btn:disabled {
+            background: #9b9a97;
+            cursor: not-allowed;
+        }
+
+        /* 暗夜模式下的输入框样式 */
+        @media (prefers-color-scheme: dark) {
+            .input-wrapper {
+                background: #404040;
+                border-color: #555555;
+            }
+
+            .input-wrapper:focus-within {
+                border-color: #ffffffe5;
+                box-shadow: 0 0 0 1px #ffffffe5;
+            }
+
+            .input-box {
+                color: #ffffffe5;
+            }
+
+            .input-box::placeholder {
+                color: #ffffff4d;
+            }
+
+            .send-btn {
+                background: #ffffffe5;
+                color: #303030;
+            }
+
+            .send-btn:hover:not(:disabled) {
+                background: #ffffff;
+            }
+
+            .send-btn:disabled {
+                background: #ffffff4d;
+            }
+        }
+
+        /* 加载动画 */
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border: 2px solid currentColor;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* 停止图标（方块） */
+        .stop-icon {
+            width: 12px;
+            height: 12px;
+            background: #ffffff;
+            border-radius: 2px;
+        }
+
+        /* 停止模式下的按钮样式 */
+        .send-btn.stop-mode {
+            background: #eb5757;
+        }
+
+        .send-btn.stop-mode:hover {
+            background: #c94040;
+        }
+
+        /* 暗夜模式下的停止按钮 */
+        @media (prefers-color-scheme: dark) {
+            .send-btn.stop-mode {
+                background: #ff6b6b;
+            }
+
+            .send-btn.stop-mode:hover {
+                background: #ff5252;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="input-wrapper">
+            <input type="text" class="input-box" id="inputBox" placeholder="Ask anything about this repository..." />
+            <button class="send-btn" id="sendBtn">
+                <span id="btnContent">↑</span>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 等待 DOM 加载完成后再初始化主题
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initTheme);
+        } else {
+            // DOM 已经加载完成，直接初始化
+            initTheme();
+        }
+
+        // 初始化暗夜模式支持 - 带详细日志
+        function initTheme() {
+            // console.log('='.repeat(80));
+            // console.log('[DeepWiki Input iframe] 🎨 主题初始化开始');
+            // console.log('[DeepWiki Input iframe] 📄 document.readyState:', document.readyState);
+            // console.log('[DeepWiki Input iframe] 📄 document.body:', document.body ? '✓ 存在' : '❌ null');
+            // console.log('='.repeat(80));
+
+            // 检测系统是否为暗夜模式
+            const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+            const isDark = darkModeQuery.matches;
+
+            // console.log('[DeepWiki Input iframe] 📱 系统主题检测:');
+            // console.log('[DeepWiki Input iframe]   - matchMedia 对象:', darkModeQuery);
+            // console.log('[DeepWiki Input iframe]   - media 查询:', darkModeQuery.media);
+            // console.log('[DeepWiki Input iframe]   - matches 结果:', darkModeQuery.matches);
+            // console.log('[DeepWiki Input iframe]   - 当前判断为:', isDark ? '暗夜模式 🌙' : '浅色模式 ☀️');
+
+            // 应用主题
+            function applyTheme(dark) {
+                // console.log('[DeepWiki Input iframe] 🖌️ 应用主题:', dark ? '暗夜模式 🌙' : '浅色模式 ☀️');
+
+                if (!document.body) {
+                    console.error('[DeepWiki Input iframe] ❌ document.body 不存在，无法应用主题');
+                    return;
+                }
+
+                if (dark) {
+                    document.documentElement.style.background = '#303030';
+                    document.documentElement.style.color = '#ffffffe5';
+                    document.body.style.background = '#303030';
+                    document.body.style.color = '#ffffffe5';
+
+                    // 更新输入框样式
+                    const inputWrapper = document.querySelector('.input-wrapper');
+                    if (inputWrapper) {
+                        inputWrapper.style.background = '#404040';
+                        inputWrapper.style.borderColor = '#555555';
+                    }
+
+                    const inputBox = document.querySelector('.input-box');
+                    if (inputBox) {
+                        inputBox.style.color = '#ffffffe5';
+                    }
+
+                    const sendBtn = document.querySelector('.send-btn');
+                    if (sendBtn) {
+                        sendBtn.style.background = '#ffffffe5';
+                        sendBtn.style.color = '#303030';
+                    }
+
+                    // console.log('[DeepWiki Input iframe] ✓ 已设置暗夜模式背景: #303030');
+                } else {
+                    document.documentElement.style.background = '#f2f2f2';
+                    document.documentElement.style.color = '#000000d9';
+                    document.body.style.background = '#f2f2f2';
+                    document.body.style.color = '#000000d9';
+
+                    // 更新输入框样式
+                    const inputWrapper = document.querySelector('.input-wrapper');
+                    if (inputWrapper) {
+                        inputWrapper.style.background = '#ffffff';
+                        inputWrapper.style.borderColor = '#e0e0e0';
+                    }
+
+                    const inputBox = document.querySelector('.input-box');
+                    if (inputBox) {
+                        inputBox.style.color = '#37352f';
+                    }
+
+                    const sendBtn = document.querySelector('.send-btn');
+                    if (sendBtn) {
+                        sendBtn.style.background = '#37352f';
+                        sendBtn.style.color = '#ffffff';
+                    }
+
+                    // console.log('[DeepWiki Input iframe] ✓ 已设置浅色模式背景: #f2f2f2');
+                }
+
+                // 验证应用结果
+                const actualBg = window.getComputedStyle(document.body).backgroundColor;
+                // console.log('[DeepWiki Input iframe] 🔍 实际应用的背景色:', actualBg);
+            }
+
+            // 初始应用主题
+            applyTheme(isDark);
+
+            // 监听系统主题变化
+            darkModeQuery.addEventListener('change', (e) => {
+                // console.log('[DeepWiki Input iframe] 🔄 系统主题变化事件触发');
+                // console.log('[DeepWiki Input iframe]   - 新主题:', e.matches ? '暗夜模式 🌙' : '浅色模式 ☀️');
+                applyTheme(e.matches);
+            });
+
+            // console.log('[DeepWiki Input iframe] ✅ 主题初始化完成');
+            // console.log('='.repeat(80));
+        }
+
+        // 状态
+        let currentRepoName = null;
+        let isAsking = false;
+        let abortController = null; // 用于取消请求
+
+        // DOM 元素
+        const inputBox = document.getElementById('inputBox');
+        const sendBtn = document.getElementById('sendBtn');
+        const btnContent = document.getElementById('btnContent');
+
+        // 设置仓库名
+        function setRepoName(repoName) {
+            currentRepoName = repoName;
+        }
+
+        // 清空历史（保留接口兼容）
+        function clearHistory() {
+            // 不再需要清空问答历史
+        }
+
+        // 停止当前请求
+        function stopRequest() {
+            if (abortController) {
+                abortController.abort();
+                abortController = null;
+            }
+            setLoading(false);
+            console.log('[DeepWiki Input] ✓ 请求已停止');
+        }
+
+        // 设置加载状态
+        function setLoading(loading) {
+            isAsking = loading;
+            if (loading) {
+                // 显示加载动画
+                btnContent.innerHTML = '<div class="spinner"></div>';
+                sendBtn.disabled = false; // 允许点击停止
+            } else {
+                // 恢复发送箭头
+                btnContent.textContent = '↑';
+                sendBtn.classList.remove('stop-mode');
+            }
+        }
+
+        // 通知父窗口打开 DeepWiki URL
+        function notifyOpenUrl(url) {
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage({
+                    type: 'deepwiki-open-url',
+                    url: url
+                }, '*');
+            }
+        }
+
+        // 从回答中提取 DeepWiki 搜索链接
+        function extractDeepWikiUrl(answer) {
+            // 匹配 "View this search on DeepWiki: https://deepwiki.com/search/..."
+            const match = answer.match(/View this search on DeepWiki:\s*(https:\/\/deepwiki\.com\/search\/[^\s\n]+)/i);
+            if (match && match[1]) {
+                return match[1];
+            }
+            return null;
+        }
+
+        // 显示错误提示（Toast 样式）
+        function showError(message) {
+            let errorDiv = document.getElementById('errorToast');
+            if (!errorDiv) {
+                errorDiv = document.createElement('div');
+                errorDiv.id = 'errorToast';
+                errorDiv.style.cssText = `
+                    position: fixed;
+                    bottom: 70px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: #37352f;
+                    color: #ffffff;
+                    padding: 10px 20px;
+                    border-radius: 6px;
+                    font-size: 13px;
+                    z-index: 1000;
+                    opacity: 0;
+                    transition: opacity 0.3s ease;
+                    max-width: 90%;
+                    text-align: center;
+                    white-space: nowrap;
+                `;
+                document.body.appendChild(errorDiv);
+            }
+
+            errorDiv.textContent = message;
+            errorDiv.style.opacity = '1';
+
+            // 3秒后自动隐藏
+            setTimeout(() => {
+                errorDiv.style.opacity = '0';
+            }, 3000);
+        }
+
+        // Cloudflare Worker API 地址
+        const DEEPWIKI_WORKER_URL = 'https://deepwiki-proxy.yuc430060.workers.dev';
+
+        // 提问
+        async function askQuestion() {
+            const question = inputBox.value.trim();
+
+            // console.log('[DeepWiki] ========================================');
+            // console.log('[DeepWiki] 🚀 开始调用 Cloudflare Worker');
+            // console.log('[DeepWiki] 📡 Worker URL:', DEEPWIKI_WORKER_URL);
+            // console.log('[DeepWiki] 📦 仓库:', currentRepoName);
+            // console.log('[DeepWiki] ❓ 问题:', question);
+            // console.log('[DeepWiki] ========================================');
+
+            if (!question) {
+                return;
+            }
+            if (!currentRepoName) {
+                showError('请先选择一个 GitHub 仓库');
+                return;
+            }
+            if (isAsking) {
+                return;
+            }
+
+            setLoading(true);
+
+            // 创建 AbortController 用于取消请求
+            abortController = new AbortController();
+
+            const requestBody = {
+                repoName: currentRepoName,
+                question: question
+            };
+
+            // console.log('[DeepWiki] 📤 请求体:', JSON.stringify(requestBody));
+            // console.log('[DeepWiki] ⏳ 正在发送请求到 Cloudflare Worker...');
+
+            const startTime = Date.now();
+
+            try {
+                const response = await fetch(`${DEEPWIKI_WORKER_URL}/api/ask`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody),
+                    signal: abortController.signal // 绑定取消信号
+                });
+
+                const elapsed = Date.now() - startTime;
+                console.log('[DeepWiki] ✅ 收到响应');
+                // console.log('[DeepWiki] 📊 状态码:', response.status);
+                // console.log('[DeepWiki] ⏱️ 耗时:', elapsed, 'ms');
+                // console.log('[DeepWiki] 📋 响应头:', Object.fromEntries(response.headers.entries()));
+
+                if (!response.ok) {
+                    console.log('[DeepWiki] ❌ HTTP 错误:', response.status, response.statusText);
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                console.log('[DeepWiki] 📥 响应数据:');
+                console.log('[DeepWiki]   - success:', data.success);
+                console.log('[DeepWiki]   - answer 长度:', data.answer ? data.answer.length : 0);
+                if (data.error) {
+                    console.log('[DeepWiki]   - error:', data.error);
+                }
+
+                if (data.success && data.answer) {
+                    console.log('[DeepWiki] ✅ 查询成功！');
+                    // 清空输入框
+                    inputBox.value = '';
+
+                    // 从回答中提取 DeepWiki 搜索链接
+                    const deepwikiUrl = extractDeepWikiUrl(data.answer);
+
+                    if (deepwikiUrl) {
+                        // console.log('[DeepWiki] 🔗 提取到 DeepWiki URL:', deepwikiUrl);
+                        notifyOpenUrl(deepwikiUrl);
+                    } else {
+                        // 如果没有提取到链接，使用默认的仓库页面
+                        console.log('[DeepWiki] ⚠️ 未提取到搜索链接，使用默认页面');
+                        const fallbackUrl = `https://deepwiki.com/${currentRepoName}`;
+                        // console.log('[DeepWiki] 🔗 使用默认 URL:', fallbackUrl);
+                        notifyOpenUrl(fallbackUrl);
+                    }
+                } else {
+                    // API 返回错误
+                    const errorMsg = data.error || '查询失败，请稍后重试';
+                    console.log('[DeepWiki] ❌ API 返回错误:', errorMsg);
+                    showError(errorMsg);
+                }
+            } catch (error) {
+                const elapsed = Date.now() - startTime;
+
+                // 检查是否是用户主动取消
+                if (error.name === 'AbortError') {
+                    console.log('[DeepWiki] ⏹️ 请求被用户取消');
+                    return; // 不显示错误提示
+                }
+
+                console.log('[DeepWiki] ❌ 请求异常');
+                console.log('[DeepWiki]   - 错误类型:', error.name);
+                console.log('[DeepWiki]   - 错误信息:', error.message);
+                console.log('[DeepWiki]   - 耗时:', elapsed, 'ms');
+                console.error('[DeepWiki] 完整错误:', error);
+
+                // 用户友好的错误提示
+                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    showError('网络连接失败，请检查网络设置');
+                } else if (error.message.includes('504') || error.message.includes('timeout')) {
+                    showError('服务暂时不可用，请稍后重试');
+                } else {
+                    showError('请求失败，请稍后重试');
+                }
+            } finally {
+                abortController = null;
+                setLoading(false);
+            }
+        }
+
+        // 按钮点击事件：发送或停止
+        sendBtn.addEventListener('click', () => {
+            if (isAsking) {
+                // 正在请求中，点击停止
+                stopRequest();
+            } else {
+                // 发送新请求
+                askQuestion();
+            }
+        });
+
+        inputBox.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!isAsking) {
+                    askQuestion();
+                }
+            }
+        });
+
+        // 暴露 API 给父窗口
+        window.deepwikiInputAPI = {
+            setRepoName,
+            clearHistory,
+            askQuestion
+        };
+
+        // 通知父窗口已加载完成
+        if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: 'deepwiki-input-ready' }, '*');
+        }
+    </script>
+</body>
+
+</html>

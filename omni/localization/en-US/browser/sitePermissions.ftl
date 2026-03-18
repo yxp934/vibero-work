@@ -1,0 +1,6 @@
+
+site-permissions-open-blocked-popups =
+  { $count ->
+     [one] Open { $count } blocked pop-up…
+    *[other] Open { $count } blocked pop-ups…
+  }
