@@ -1,3 +1,5 @@
+# macos安装包看release
+
 # vibero-work
 
 Runtime-level Git workspace for secondary development of a packaged Vibero desktop app.
