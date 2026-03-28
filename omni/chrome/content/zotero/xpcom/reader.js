@@ -28,6 +28,9 @@ const { BlockingObserver } = ChromeUtils.importESModule("chrome://zotero/content
 
 var { InlineSpellChecker } = ChromeUtils.importESModule("resource://gre/modules/InlineSpellChecker.sys.mjs");
 
+Services.scriptloader.loadSubScript("chrome://zotero/content/xpcom/readerCacheUtils.js", globalThis);
+const { hasRenderableVibeReaderCache } = globalThis.VibeReaderCacheUtils;
+
 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Errors/Invalid_array_length
 const ARRAYBUFFER_MAX_LENGTH = Services.appinfo.is64Bit ?
 Math.pow(2, 33) :
@@ -1631,11 +1634,11 @@ ${contentText}
     };
 
     // 从 VibeDB 加载解析数据（特权函数）
-    const _loadParsedDataFromVibeDBPrivileged = async () => {
-      try {
-        // console.log('[xpcom/reader.js] 开始从 VibeDB 加载解析数据...');
-        const itemID = this._item.id;
-        await Zotero.VibeDB.schemaUpdatePromise;
+	    const _loadParsedDataFromVibeDBPrivileged = async () => {
+	      try {
+	        // console.log('[xpcom/reader.js] 开始从 VibeDB 加载解析数据...');
+	        const itemID = this._item.id;
+	        await Zotero.VibeDB.schemaUpdatePromise;
 
         // 1. 查询 paper 记录
         const paper = await Zotero.VibeDB.Papers.get(itemID);
@@ -1647,16 +1650,27 @@ ${contentText}
         // console.log('[xpcom/reader.js] 找到 paper 记录:', paper.paper_id);
         const paperID = paper.paper_id;
 
-        // 2. 加载段落数据（包含 points）
-        const paragraphs = await Zotero.VibeDB.Paragraphs.getByItemID(itemID, paperID);
-        // console.log(`[xpcom/reader.js] 加载了 ${paragraphs.length} 个段落`);
+	        // 2. 加载段落数据（包含 points）
+	        const paragraphs = await Zotero.VibeDB.Paragraphs.getByItemID(itemID, paperID);
+	        // console.log(`[xpcom/reader.js] 加载了 ${paragraphs.length} 个段落`);
 
-        // 构建 paragraphIDMap 用于后续查询
-        const paragraphIDMap = {};
-        for (const para of paragraphs) {
-          const key = `${para.page_idx}_${para.paragraph_idx}`;
-          paragraphIDMap[key] = para.paragraph_id;
-        }
+	        // 3. 先判断是否存在可渲染的缓存，避免只有 paper 壳记录时误触发灰屏渲染流程
+	        const articleSummaryData = await Zotero.VibeDB.ArticleSummary.getByPaperID(paperID);
+	        const sectionsData = await Zotero.VibeDB.Sections.getByPaperID(paperID);
+	        if (!hasRenderableVibeReaderCache({
+	          paragraphs,
+	          articleSummary: articleSummaryData,
+	          sections: sectionsData
+	        })) {
+	          return null;
+	        }
+
+	        // 构建 paragraphIDMap 用于后续查询
+	        const paragraphIDMap = {};
+	        for (const para of paragraphs) {
+	          const key = `${para.page_idx}_${para.paragraph_idx}`;
+	          paragraphIDMap[key] = para.paragraph_id;
+	        }
 
         // 3. 为每个段落加载 points 和 sentences
         for (const para of paragraphs) {
@@ -1816,13 +1830,9 @@ ${contentText}
         // 9. outline 已经在 Papers.get 中解析过了，直接使用
         const outline = paper.outline || [];
 
-        // 10. 加载 ArticleSummary 数据
-        const articleSummaryData = await Zotero.VibeDB.ArticleSummary.getByPaperID(paperID);
-        // console.log(`[xpcom/reader.js] 加载了 ${articleSummaryData.length} 个 article_summary 条目`);
-
-        // 11. 加载 Sections 数据
-        const sectionsData = await Zotero.VibeDB.Sections.getByPaperID(paperID);
-        // console.log(`[xpcom/reader.js] 加载了 sections 数据:`, sectionsData);
+	        // 10. ArticleSummary / Sections 已在可渲染性检查阶段加载
+	        // console.log(`[xpcom/reader.js] 加载了 ${articleSummaryData.length} 个 article_summary 条目`);
+	        // console.log(`[xpcom/reader.js] 加载了 sections 数据:`, sectionsData);
 
         // 12. 构建完整的数据结构
         // ✅ 将相对路径转换回绝对路径
