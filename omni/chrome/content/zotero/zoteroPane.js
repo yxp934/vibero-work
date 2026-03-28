@@ -3862,6 +3862,7 @@ var ZoteroPane = new function () {
     'loadReport',
     'sep5',
     'recognizePDF',
+    'batchParsePapers',
     'unrecognize',
     'createParent',
     'renameAttachments',
@@ -3921,6 +3922,7 @@ var ZoteroPane = new function () {
           showRelate = true,canRelate = true,
           canIndex = true,
           canRecognize = true,
+          canBatchParse = false,
           canUnrecognize = true,
           canRename = true;
         var canMarkRead = collectionTreeRow.isFeedsOrFeed();
@@ -3946,6 +3948,10 @@ var ZoteroPane = new function () {
 
           if (canRecognize && !Zotero.RecognizeDocument.canRecognize(item)) {
             canRecognize = false;
+          }
+
+          if (!canBatchParse && item.isPDFAttachment && item.isPDFAttachment() && item.isFileAttachment()) {
+            canBatchParse = true;
           }
 
           if (canUnrecognize && !Zotero.RecognizeDocument.canUnrecognize(item)) {
@@ -3979,6 +3985,11 @@ var ZoteroPane = new function () {
 
         if (canRecognize) {
           show.add(m.recognizePDF);
+        }
+
+        if (canBatchParse) {
+          show.add(m.batchParsePapers);
+          menu.childNodes[m.batchParsePapers].setAttribute('label', items.length > 1 ? '批量解析论文' : '解析论文');
         }
 
         if (canUnrecognize) {
@@ -4044,7 +4055,7 @@ var ZoteroPane = new function () {
         }
 
         // Add in attachment separator
-        if (canCreateParent || canRecognize || canUnrecognize || canRename || canIndex) {
+        if (canCreateParent || canRecognize || canBatchParse || canUnrecognize || canRename || canIndex) {
           show.add(m.sep5);
         }
 
@@ -4127,6 +4138,11 @@ var ZoteroPane = new function () {
 
             if (Zotero.RecognizeDocument.canRecognize(item)) {
               show.add(m.recognizePDF);
+              showSep5 = true;
+            }
+
+            if (item.isPDFAttachment && item.isPDFAttachment() && item.isFileAttachment()) {
+              show.add(m.batchParsePapers);
               showSep5 = true;
             }
 
@@ -4331,6 +4347,7 @@ var ZoteroPane = new function () {
     menu.childNodes[m.loadReport].setAttribute('label', Zotero.getString('pane.items.menu.generateReport' + multiple));
     menu.childNodes[m.createParent].setAttribute('label', Zotero.getString('pane.items.menu.createParent' + multiple));
     menu.childNodes[m.recognizePDF].setAttribute('label', Zotero.getString('pane.items.menu.recognizeDocument'));
+    menu.childNodes[m.batchParsePapers].setAttribute('label', multiple ? '批量解析论文' : '解析论文');
     menu.childNodes[m.renameAttachments].setAttribute('label', Zotero.getString('pane.items.menu.renameAttachments' + multiple));
     menu.childNodes[m.reindexItem].setAttribute('label', Zotero.getString('pane.items.menu.reindexItem' + multiple));
 
@@ -5972,6 +5989,72 @@ var ZoteroPane = new function () {
   this.recognizeSelected = function () {
     Zotero.RecognizeDocument.recognizeItems(ZoteroPane.getSelectedItems());
     Zotero.ProgressQueues.get('recognize').getDialog().open();
+  };
+
+
+  this.parseSelectedPDFs = async function () {
+    const items = this.getSelectedItems().filter((item) => {
+      return item.isPDFAttachment && item.isPDFAttachment() && item.isFileAttachment();
+    });
+    if (!items.length) {
+      return [];
+    }
+
+    if (typeof Zotero.pdfParser === 'undefined') {
+      Services.scriptloader.loadSubScript("chrome://zotero/content/xpcom/pdfParsing/pdfParser.js", Zotero);
+    }
+    if (typeof Zotero.runPDFParseBatch === 'undefined') {
+      Services.scriptloader.loadSubScript("chrome://zotero/content/xpcom/pdfParsing/batchParse.js", Zotero);
+    }
+
+    let progressQueue = Zotero.ProgressQueues.get('vibeParse');
+    if (!progressQueue) {
+      progressQueue = Zotero.ProgressQueues.create({
+        id: 'vibeParse',
+        title: 'recognizePDF.title',
+        columns: [
+          'recognizePDF.attachmentName.label',
+          'recognizePDF.itemName.label'
+        ]
+      });
+    } else {
+      progressQueue.cancel();
+    }
+
+    for (const item of items) {
+      progressQueue.addRow(item);
+    }
+    progressQueue.getDialog().open();
+
+    return Zotero.runPDFParseBatch(items, async (item) => {
+      progressQueue.updateRow(item.id, Zotero.ProgressQueue.ROW_PROCESSING, Zotero.getString('general.processing'));
+
+      const filePath = await item.getFilePathAsync();
+      if (!filePath) {
+        throw new Error('无法获取 PDF 文件路径');
+      }
+
+      const result = await Zotero.pdfParser.processFile(filePath);
+      if (!result || !result.success) {
+        throw new Error(result?.error || result?.message || 'PDF解析失败');
+      }
+
+      const parentTitle = item.parentItem ? item.parentItem.getDisplayTitle() : item.getDisplayTitle();
+      progressQueue.updateRow(item.id, Zotero.ProgressQueue.ROW_SUCCEEDED, parentTitle);
+      return result;
+    }).then((results) => {
+      for (const result of results) {
+        if (result.success) {
+          continue;
+        }
+        progressQueue.updateRow(
+          result.item.id,
+          Zotero.ProgressQueue.ROW_FAILED,
+          result.error || Zotero.getString('general.error')
+        );
+      }
+      return results;
+    });
   };
 
 

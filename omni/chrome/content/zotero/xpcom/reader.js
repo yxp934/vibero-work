@@ -810,18 +810,9 @@ class ReaderInstance {
           messages: [{ role: "user", content: prompt }]
         };
 
-        // 获取 access_token
-        let token = null;
-        if (typeof Zotero !== 'undefined' && Zotero.VibeDBSync && Zotero.VibeDBSync.getAccessToken) {
-          token = await Zotero.VibeDBSync.getAccessToken();
-        }
-
         const headers = {
           'Content-Type': 'application/json'
         };
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
 
         // 发送请求到代理
         const response = await fetch(HUOSHAN_PROXY_URL, {
@@ -2770,135 +2761,86 @@ ${contentText}
       }
     }
 
-    function _hasBypassModelConfig() {
-      const customProvider = _readJSONPref('aiChat.customModelConfig');
-      if (customProvider && customProvider.baseUrl && customProvider.apiKey
-        && (customProvider.modelName || customProvider.model)) {
-        return true;
+    function _ensureAIProvidersRegistry() {
+      try {
+        if (!Zotero) {
+          return null;
+        }
+        if (!Zotero.AIProviders && typeof Services !== 'undefined' && Services.scriptloader) {
+          Services.scriptloader.loadSubScript("chrome://zotero/content/xpcom/aiProviders.js", Zotero);
+        }
+        return Zotero.AIProviders || null;
+      } catch (e) {
+        console.error('[xpcom/reader.js] 加载 AIProviders registry 失败:', e);
+        return null;
       }
-
-      const mineruDirect = _readJSONPref('mineru.directConfig');
-      if (mineruDirect && mineruDirect.baseUrl && mineruDirect.apiKey) {
-        return true;
-      }
-
-      return false;
     }
 
-    // 添加登录状态检查回调
+    function _isAIWorkflowAccountBypassed() {
+      return true;
+    }
+
     readerOptions.checkLoginStatus = Components.utils.exportFunction(function () {
       try {
-        if (_hasBypassModelConfig()) {
-          return true;
-        }
-        return Zotero.VibeDBSync && Zotero.VibeDBSync.isLoggedIn ? Zotero.VibeDBSync.isLoggedIn() : false;
+        return _isAIWorkflowAccountBypassed();
       } catch (e) {
         console.error('[xpcom/reader.js] 检查登录状态失败:', e);
-        return false;
+        return true;
       }
     }, contentWin, { allowCrossOriginArguments: true });
 
     readerOptions.hasCustomProviderConfig = Components.utils.exportFunction(function () {
       try {
-        return _hasBypassModelConfig();
+        return !!_ensureAIProvidersRegistry()?.getDefaultProvider?.();
       } catch (e) {
         return false;
       }
     }, contentWin, { allowCrossOriginArguments: true });
 
-    // 添加获取用户余额回调
     readerOptions.getUserBalance = Components.utils.exportFunction(function () {
       return new contentWin.Promise((resolve, reject) => {
         (async () => {
           try {
-            if (_hasBypassModelConfig()) {
-              const bypassBalance = {
-                credits: 999999,
-                credits_used: 0,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-                customProviderBypass: true
-              };
-              resolve(Components.utils.cloneInto(bypassBalance, contentWin));
-              return;
-            }
-            if (!Zotero.VibeDBSync || !Zotero.VibeDBSync.getUserBalance) {
-              resolve(null);
-              return;
-            }
-            const balance = await Zotero.VibeDBSync.getUserBalance();
-            const clonedBalance = Components.utils.cloneInto(balance, contentWin);
-            resolve(clonedBalance);
+            resolve(Components.utils.cloneInto({
+              credits: null,
+              credits_used: 0,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              aiWorkflowBypass: true
+            }, contentWin));
           } catch (e) {
             console.error('[xpcom/reader.js] 获取余额失败:', e);
-            resolve(null);
+            resolve(Components.utils.cloneInto({ credits: null, aiWorkflowBypass: true }, contentWin));
           }
         })();
       });
     }, contentWin, { allowCrossOriginArguments: true });
 
-    // 添加打开登录面板回调
     readerOptions.openLoginPanel = Components.utils.exportFunction(function () {
-      try {
-        const win = Zotero.getMainWindow();
-        if (win && win.ZoteroPane && win.ZoteroPane.toggleCloudSyncPanel) {
-          const cloudSyncButton = win.document.getElementById('zotero-tb-cloud-sync');
-          if (cloudSyncButton) {
-            win.ZoteroPane.toggleCloudSyncPanel(cloudSyncButton);
-            return true;
-          }
-        }
-        return false;
-      } catch (e) {
-        console.error('[xpcom/reader.js] 打开登录面板失败:', e);
-        return false;
-      }
+      return false;
     }, contentWin, { allowCrossOriginArguments: true });
 
-    // 添加扣减Credits回调
     readerOptions.deductCredits = Components.utils.exportFunction(function (amount) {
       return new contentWin.Promise((resolve, reject) => {
         (async () => {
           try {
-            if (_hasBypassModelConfig()) {
-              resolve(true);
-              return;
-            }
-            if (!Zotero.VibeDBSync || !Zotero.VibeDBSync.deductCredits) {
-              resolve(false);
-              return;
-            }
-            const success = await Zotero.VibeDBSync.deductCredits(amount || 1);
-            resolve(success);
+            resolve(true);
           } catch (e) {
             console.error('[xpcom/reader.js] 扣减Credits失败:', e);
-            resolve(false);
+            resolve(true);
           }
         })();
       });
     }, contentWin, { allowCrossOriginArguments: true });
 
-    // 添加记录使用量回调
     readerOptions._logUsage = Components.utils.exportFunction(function (pageCount) {
       return new contentWin.Promise((resolve, reject) => {
         (async () => {
           try {
-            if (_hasBypassModelConfig()) {
-              resolve(true);
-              return;
-            }
-            if (typeof Zotero !== 'undefined' && Zotero.VibeDBSync && Zotero.VibeDBSync.logUsage) {
-              const inputTokens = Zotero._vibeTokenCounter ? Zotero._vibeTokenCounter.prompt : 0;
-              const outputTokens = Zotero._vibeTokenCounter ? Zotero._vibeTokenCounter.completion : 0;
-              const totalTokens = Zotero._vibeTokenCounter ? Zotero._vibeTokenCounter.total : 0;
-              const success = await Zotero.VibeDBSync.logUsage(pageCount, inputTokens, outputTokens, totalTokens);
-              resolve(success);
-            } else {
-              resolve(false);
-            }
+            resolve(true);
           } catch (e) {
             console.error('[xpcom/reader.js] 记录使用量失败:', e);
-            resolve(false);
+            resolve(true);
           }
         })();
       });

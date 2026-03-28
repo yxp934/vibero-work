@@ -132,44 +132,24 @@ class MinerUParser {
     const directConfig = preferDirect ? this.__getDirectConfig() : null;
     if (directConfig) {
       headers['Authorization'] = `Bearer ${directConfig.apiKey}`;
-      return headers;
-    }
-
-    const token = await this._getAccessToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
     }
     return headers;
   }
 
   /**
-   * 获取 Access Token
+   * 历史兼容接口：AI 解析链已不再依赖账户 token
    * @private
    */
   async _getAccessToken() {
-    if (typeof Zotero !== 'undefined' && Zotero.VibeDBSync && Zotero.VibeDBSync.getAccessToken) {
-      try {
-        return await Zotero.VibeDBSync.getAccessToken();
-      } catch (e) {
-        console.error('[MinerU] 获取 Token 失败:', e);
-      }
-    }
     return null;
   }
 
   /**
-   * 处理 401 未授权错误
+   * 历史兼容接口：401 不再触发登录流程
    * @private
    */
   _handleUnauthorized() {
-    if (this.__getDirectConfig()) {
-      return;
-    }
-    console.log('[MinerU] Token 失效 (401)，触发重新登录流程');
-    if (typeof Zotero !== 'undefined' && Zotero.VibeDBSync) {
-      if (Zotero.VibeDBSync.clearUser) Zotero.VibeDBSync.clearUser();
-      if (Zotero.VibeDBSync.ensureLoggedIn) Zotero.VibeDBSync.ensureLoggedIn();
-    }
+    console.warn('[MinerU] 收到 401 响应，AI 解析链不会再触发登录流程');
   }
 
   /**
@@ -605,11 +585,7 @@ class MinerUParser {
       // console.log(`[MinerU] ⏳ 正在上传到 R2...`);
       const startTime = Date.now();
 
-      const token = await this._getAccessToken();
       const headers = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
 
       let response;
       let responseText = '';
@@ -688,11 +664,7 @@ class MinerUParser {
     try {
       console.log(`🗑️ 删除 R2 临时文件`);
 
-      const token = await this._getAccessToken();
       const headers = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
 
       const response = await this.__request('DELETE', `${R2_UPLOAD_WORKER_URL}/file/${key}`, {
         headers: headers,
@@ -878,13 +850,9 @@ class MinerUParser {
       const startTime = Date.now();
       let response;
 
-      const token = await this._getAccessToken();
       const headers = {
         'Content-Type': 'application/json'
       };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
 
       try {
         if (this.__canUseCurl()) {
@@ -991,11 +959,7 @@ class MinerUParser {
 
     const startTime = Date.now();
 
-    const token = await this._getAccessToken();
     const headers = {};
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
 
     let response;
     let directDownloadFilePath = null;
@@ -1270,13 +1234,9 @@ class MinerUParser {
 
       const startTime = Date.now();
 
-      const token = await this._getAccessToken();
       const headers = {
         'Content-Type': 'application/json'
       };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
 
       let submitResponse;
       let submitText = '';
@@ -1402,13 +1362,9 @@ class MinerUParser {
 
       const startTime = Date.now();
 
-      const token = await this._getAccessToken();
       const headers = {
         'Content-Type': 'application/json'
       };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
 
       const submitResponse = await this.__request('POST', submitUrl, {
         headers: headers,

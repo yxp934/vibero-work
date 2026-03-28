@@ -40,23 +40,26 @@ const DEFAULT_MODEL = MODEL_NAME_MAP.DEEPSEEK;
 
 const BATCH_SIZE = 60; // 每批处理多少个对象
 
+function ensureAIProvidersRegistry() {
+  try {
+    if (typeof Zotero === 'undefined' || !Zotero) {
+      return;
+    }
+    if (!Zotero.AIProviders && typeof Services !== 'undefined' && Services.scriptloader) {
+      Services.scriptloader.loadSubScript("chrome://zotero/content/xpcom/aiProviders.js", Zotero);
+    }
+  } catch (error) {
+    console.error('[llmapi] 加载 AIProviders registry 失败:', error);
+  }
+}
+
 function getCustomProviderConfig() {
   try {
-    if (typeof Zotero === 'undefined' || !Zotero.Prefs) {
+    ensureAIProvidersRegistry();
+    if (typeof Zotero === 'undefined' || !Zotero.AIProviders) {
       return null;
     }
-
-    const saved = Zotero.Prefs.get('aiChat.customModelConfig', true);
-    if (!saved) {
-      return null;
-    }
-
-    const config = typeof saved === 'string' ? JSON.parse(saved) : saved;
-    if (!config || !config.baseUrl || !config.apiKey || !(config.modelName || config.model)) {
-      return null;
-    }
-
-    return config;
+    return Zotero.AIProviders.getDefaultProvider();
   } catch (error) {
     console.error('[llmapi] 读取自定义 AI 提供商配置失败:', error);
     return null;
@@ -209,21 +212,6 @@ async function callCustomProviderAI(message = "你好，请介绍一下你自己
 async function callHuoshanAI(message = "你好，请介绍一下你自己", options = {}) {
   const url = API_CONFIG.proxyUrl;
 
-  // 获取 access_token (如果需要 JWT 验证)
-  // 注意：在 XPCOM 环境下，Zotero 对象是全局可用的
-  let token = null;
-  if (typeof Zotero !== 'undefined' && Zotero.VibeDBSync) {
-    token = await Zotero.VibeDBSync.getAccessToken();
-    // 如果获取不到 token，且 ensureLoggedIn 可用，强制检查登录
-    if (!token && Zotero.VibeDBSync.ensureLoggedIn) {
-      if (!Zotero.VibeDBSync.ensureLoggedIn()) {
-        throw new Error("用户未登录，请登录后重试");
-      }
-      // 登录面板打开后，重新获取一次（虽然通常需要用户操作后才会有）
-      // 这里直接抛出错误让用户去登录比较合理
-    }
-  }
-
   // 构建请求体（火山引擎格式）
   const requestBody = {
     // model: options.model || "ep-20260116143400-qz6rl", // 火山引擎 endpoint ID
@@ -256,10 +244,6 @@ async function callHuoshanAI(message = "你好，请介绍一下你自己", opti
   const headers = {
     'Content-Type': 'application/json'
   };
-  // 如果有 token，添加到 Authorization 头
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
 
   const fetchOptions = {
     method: 'POST',
@@ -275,14 +259,6 @@ async function callHuoshanAI(message = "你好，请介绍一下你自己", opti
     const response = await fetch(url, fetchOptions);
 
     if (!response.ok) {
-      // 检查 401 错误，触发重新登录
-      if (response.status === 401 && typeof Zotero !== 'undefined' && Zotero.VibeDBSync) {
-        console.log('[llmapi] Token 失效 (401)，触发重新登录流程');
-        if (Zotero.VibeDBSync.clearUser) Zotero.VibeDBSync.clearUser();
-        if (Zotero.VibeDBSync.ensureLoggedIn) Zotero.VibeDBSync.ensureLoggedIn();
-        throw new Error("登录已过期，请在弹出的窗口中重新登录");
-      }
-
       const errorText = await response.text();
       const responseHeaders = {};
       response.headers.forEach((val, key) => responseHeaders[key] = val);
@@ -337,17 +313,6 @@ async function callHuoshanAI(message = "你好，请介绍一下你自己", opti
 async function callBailianAI(message = "你好，请介绍一下你自己", options = {}) {
   const url = API_CONFIG.proxyUrl;
 
-  // 获取 access_token（JWT 鉴权，与火山引擎逻辑一致）
-  let token = null;
-  if (typeof Zotero !== 'undefined' && Zotero.VibeDBSync) {
-    token = await Zotero.VibeDBSync.getAccessToken();
-    if (!token && Zotero.VibeDBSync.ensureLoggedIn) {
-      if (!Zotero.VibeDBSync.ensureLoggedIn()) {
-        throw new Error("用户未登录，请登录后重试");
-      }
-    }
-  }
-
   // 构建请求体（OpenAI Compatible 格式，百炼不支持 thinking 参数）
   const requestBody = {
     model: options.model || 'qwen-plus', // 百炼默认模型
@@ -376,10 +341,6 @@ async function callBailianAI(message = "你好，请介绍一下你自己", opti
   const headers = {
     'Content-Type': 'application/json'
   };
-  // 如果有 token，添加到 Authorization 头（用于 Supabase Edge Function 鉴权）
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
 
   const fetchOptions = {
     method: 'POST',
@@ -392,14 +353,6 @@ async function callBailianAI(message = "你好，请介绍一下你自己", opti
     const response = await fetch(url, fetchOptions);
 
     if (!response.ok) {
-      // 检查 401 错误，触发重新登录
-      if (response.status === 401 && typeof Zotero !== 'undefined' && Zotero.VibeDBSync) {
-        console.log('[llmapi] Token 失效 (401)，触发重新登录流程');
-        if (Zotero.VibeDBSync.clearUser) Zotero.VibeDBSync.clearUser();
-        if (Zotero.VibeDBSync.ensureLoggedIn) Zotero.VibeDBSync.ensureLoggedIn();
-        throw new Error("登录已过期，请在弹出的窗口中重新登录");
-      }
-
       const errorText = await response.text();
       const responseHeaders = {};
       response.headers.forEach((val, key) => responseHeaders[key] = val);

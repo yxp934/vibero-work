@@ -56,6 +56,14 @@ try {
   throw e;
 }
 
+try {
+  Services.scriptloader.loadSubScript("chrome://zotero/content/xpcom/pdfParsing/parseQueue.js");
+  __appendPDFParserDebugLog("loadSubScript parseQueue.js ok");
+} catch (e) {
+  __appendPDFParserDebugLog(`loadSubScript parseQueue.js failed: ${e && e.stack ? e.stack : e}`);
+  throw e;
+}
+
 /**
  * PDF解析器类
  * 作为统一的入口点，调用具体的解析实现
@@ -65,6 +73,7 @@ class PDFParser {
     // 直接使用MinerUParser类，无需通过Zotero命名空间
     try {
       this.mineruParser = new MinerUParser();
+      this.parseQueue = new ParseQueue();
       __appendPDFParserDebugLog("new MinerUParser ok");
     } catch (e) {
       __appendPDFParserDebugLog(`new MinerUParser failed: ${e && e.stack ? e.stack : e}`);
@@ -124,6 +133,12 @@ class PDFParser {
    * @returns {Promise<Object>} 解析结果
    */
   async processFile(filePath) {
+    return this.parseQueue.enqueue(() => this._processFileImmediately(filePath), {
+      key: filePath
+    });
+  }
+
+  async _processFileImmediately(filePath) {
     // 原始实现已注释掉，现在直接读取预处理的JSON文件
     // 1. MinerU解析pdf文件
     let resultData, resultDir;

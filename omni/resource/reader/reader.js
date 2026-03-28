@@ -176341,31 +176341,13 @@ class Reader {
       });
     }
   }
+  _enqueueParseTask(task) {
+    const previousTask = this._parseTaskTail || Promise.resolve();
+    const nextTask = previousTask.catch(() => {}).then(task);
+    this._parseTaskTail = nextTask.then(() => undefined, () => undefined);
+    return nextTask;
+  }
   async _onFlow() {
-    // 检查登录状态
-    try {
-      // 使用回调函数检查（这些函数由 xpcom/reader.js 提供）
-      if (!this._checkLoginStatus || !this._getUserBalance || !this._openLoginPanel) {
-        console.error('[reader/_onFlow] 缺少必要的回调函数');
-        this._showNotification('系统错误，请重启 Vibero', 'error');
-        return null;
-      }
-
-      // 检查登录状态
-      const isLoggedIn = this._checkLoginStatus();
-      if (!isLoggedIn) {
-        // console.log('[reader/_onFlow] 用户未登录，弹出登录界面');
-        this._showNotification('请重新登录账号', 'warning');
-        // 打开云同步面板（登录界面）
-        this._openLoginPanel();
-        return null;
-      }
-    } catch (e) {
-      console.error('[reader/_onFlow] 登录检查失败:', e);
-      this._showNotification('登录检查失败: ' + e.message, 'error');
-      return null;
-    }
-
     // 执行 onFlow 流程
     // 每次 flow 开始时重新读取 VIBE 解析语言，确保修改设置后立即生效
     if (this._getLlmPromptLanguage) {
@@ -176483,6 +176465,7 @@ class Reader {
    * @param {boolean} shouldDeleteOldData - 是否需要删除旧数据（有缓存时为true，无缓存时为false）
    */
   async _executeReparse(shouldDeleteOldData) {
+    return this._enqueueParseTask(async () => {
     // 在新的解析流程开始前，清空旧的全局 Token 计数器
     if (this._resetTokenUsage) this._resetTokenUsage();
 
@@ -176558,6 +176541,7 @@ class Reader {
       percent: 100,
       message: '完成'
     });
+    });
   }
 
   /**
@@ -176603,30 +176587,13 @@ class Reader {
    * @returns {Promise<{balance: object, totalCost: number}|null>}
    */
   async _checkBalance(pdfPages, options = {}) {
-    const {
-      unitCost = null,
-      usageLabel = '解析'
-    } = options;
-    const balance = await this._getUserBalance();
-    if (!balance || balance.credits === null || balance.credits === undefined) {
-      console.error('[reader/_checkBalance] 无法获取Credits信息');
-      this._showNotification('无法获取Credits信息，请稍后重试', 'error');
-      return null;
-    }
-    const pricing = this._getPricing ? this._getPricing() : {
-      PAGE: 4
+    return {
+      balance: {
+        credits: null,
+        aiWorkflowBypass: true
+      },
+      totalCost: 0
     };
-    const pageCost = typeof unitCost === 'number' ? unitCost : pricing.PAGE || 4;
-    const totalCost = pdfPages * pageCost;
-    if (balance.credits >= totalCost) {
-      return {
-        balance,
-        totalCost
-      };
-    } else {
-      this._showNotification(`Credits不足（${usageLabel} ${pdfPages} 页需 ${totalCost} Credits，剩余 ${balance.credits} Credits）`, 'error');
-      return null;
-    }
   }
 
   /**
@@ -176635,17 +176602,7 @@ class Reader {
    * @param {number} pdfPages - PDF页数
    */
   async _deductBalance(balanceCheck, pdfPages) {
-    let deductSuccess = false;
-    try {
-      if (this._deductCredits && balanceCheck && balanceCheck.totalCost) {
-        deductSuccess = await this._deductCredits(balanceCheck.totalCost);
-        if (!deductSuccess) {
-          console.error('[reader/_deductBalance] ⚠️ 扣减Credits失败');
-        }
-      }
-    } catch (e) {
-      console.error('[reader/_deductBalance] 扣减Credits异常:', e);
-    }
+    return true;
   }
 
   /**
@@ -185654,6 +185611,7 @@ Return only the JSON array, no other explanation. If nothing to filter, return e
    * @param {number} pageIdx
    */
   async reparseSinglePage(pageIdx) {
+    return this._enqueueParseTask(async () => {
     try {
       if (!this.hasFullParseDataForSingleReparse()) {
         this._showNotification('没有可用的解析数据，请先执行完整解析', 'error');
@@ -185775,6 +185733,7 @@ Return only the JSON array, no other explanation. If nothing to filter, return e
       this._showNotification(`第 ${pageIdx + 1} 页重解析失败：${error.message}`, 'error');
       return false;
     }
+    });
   }
 
   /**

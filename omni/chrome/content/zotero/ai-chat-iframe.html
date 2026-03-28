@@ -6,11 +6,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Chat</title>
     <script>
-        const CUSTOM_CONFIG_PREF = 'aiChat.customModelConfig';
         const CUSTOM_AUTO_OPEN_PREF = 'aiChat.customProviderConfigAutoOpen';
+        const DEFAULT_PROVIDER_NAME = 'Custom Provider';
 
         function getHostZotero() {
             return window.parent?.Zotero || window.top?.Zotero || null;
+        }
+
+        function ensureAIProvidersRegistry() {
+            try {
+                const Zotero = getHostZotero();
+                if (!Zotero) {
+                    return null;
+                }
+                if (!Zotero.AIProviders && typeof Services !== 'undefined' && Services.scriptloader) {
+                    Services.scriptloader.loadSubScript('chrome://zotero/content/xpcom/aiProviders.js', Zotero);
+                }
+                return Zotero.AIProviders || null;
+            } catch (e) {
+                console.error('[ZoteroHelper] 加载 AIProviders registry 失败:', e);
+                return null;
+            }
         }
 
         function normalizeCustomConfig(rawConfig, requireComplete = false) {
@@ -20,6 +36,7 @@
 
             const normalized = {
                 ...rawConfig,
+                name: String(rawConfig.name || '').trim(),
                 baseUrl: String(rawConfig.baseUrl || '').trim(),
                 apiKey: String(rawConfig.apiKey || '').trim(),
                 modelName: String(rawConfig.modelName || rawConfig.model || '').trim()
@@ -29,7 +46,7 @@
                 normalized.model = normalized.modelName;
             }
 
-            if (requireComplete && (!normalized.baseUrl || !normalized.apiKey || !normalized.modelName)) {
+            if (requireComplete && (!normalized.name || !normalized.baseUrl || !normalized.apiKey || !normalized.modelName)) {
                 return null;
             }
 
@@ -38,18 +55,11 @@
 
         function getStoredCustomModelConfig() {
             try {
-                const Zotero = getHostZotero();
-                if (!Zotero || !Zotero.Prefs) {
+                const registry = ensureAIProvidersRegistry();
+                if (!registry) {
                     return null;
                 }
-
-                const saved = Zotero.Prefs.get(CUSTOM_CONFIG_PREF, true);
-                if (!saved) {
-                    return null;
-                }
-
-                const parsed = typeof saved === 'string' ? JSON.parse(saved) : saved;
-                return normalizeCustomConfig(parsed, false);
+                return normalizeCustomConfig(registry.getDefaultProvider(), false);
             } catch (e) {
                 console.error('[ZoteroHelper] 读取自定义模型配置失败:', e);
                 return null;
@@ -58,6 +68,70 @@
 
         function getActiveCustomModelConfig() {
             return normalizeCustomConfig(getStoredCustomModelConfig(), true);
+        }
+
+        function getAllProviderConfigs() {
+            try {
+                const registry = ensureAIProvidersRegistry();
+                if (!registry) {
+                    return [];
+                }
+                return registry.getProviders().map((provider) => normalizeCustomConfig(provider, true)).filter(Boolean);
+            } catch (e) {
+                console.error('[ZoteroHelper] 读取 provider 列表失败:', e);
+                return [];
+            }
+        }
+
+        function getProviderConfigByName(providerName) {
+            try {
+                const registry = ensureAIProvidersRegistry();
+                if (!registry) {
+                    return null;
+                }
+                return normalizeCustomConfig(registry.getProviderByName(providerName), true);
+            } catch (e) {
+                console.error('[ZoteroHelper] 读取指定 provider 失败:', e);
+                return null;
+            }
+        }
+
+        function getDefaultProviderName() {
+            const provider = getStoredCustomModelConfig();
+            return provider?.name || '';
+        }
+
+        function getDefaultChatModel() {
+            const provider = getActiveCustomModelConfig();
+            if (!provider) {
+                return null;
+            }
+            return {
+                key: provider.name || provider.modelName,
+                label: provider.name || provider.modelName,
+                config: provider
+            };
+        }
+
+        function getProviderMenuItems() {
+            return getAllProviderConfigs().map((provider) => ({
+                key: provider.name,
+                label: provider.name,
+                disabled: false
+            }));
+        }
+
+        function setDefaultProvider(providerName) {
+            try {
+                const registry = ensureAIProvidersRegistry();
+                if (!registry) {
+                    return false;
+                }
+                return !!registry.setDefaultProvider(providerName);
+            } catch (e) {
+                console.error('[ZoteroHelper] 设置默认 provider 失败:', e);
+                return false;
+            }
         }
 
         function formatCustomEndpoint(baseUrl) {
@@ -77,15 +151,27 @@
             return `${url}/v1/chat/completions`;
         }
 
-        function saveCustomModelConfig(config) {
+        function saveProviderConfig(config, options = {}) {
             try {
                 const Zotero = getHostZotero();
                 const normalized = normalizeCustomConfig(config, true);
-                if (!Zotero || !Zotero.Prefs || !normalized) {
+                const registry = ensureAIProvidersRegistry();
+                if (!Zotero || !Zotero.Prefs || !registry || !normalized) {
                     return false;
                 }
-
-                Zotero.Prefs.set(CUSTOM_CONFIG_PREF, JSON.stringify(normalized), true);
+                const providerName = String(normalized.name || DEFAULT_PROVIDER_NAME).trim() || DEFAULT_PROVIDER_NAME;
+                const providers = getAllProviderConfigs().filter((provider) => provider.name !== providerName);
+                const provider = {
+                    name: providerName,
+                    baseUrl: normalized.baseUrl,
+                    apiKey: normalized.apiKey,
+                    modelName: normalized.modelName
+                };
+                providers.push(provider);
+                const defaultProviderName = options.setDefault === false
+                    ? getDefaultProviderName() || provider.name
+                    : provider.name;
+                registry.saveProviders(providers, defaultProviderName);
                 Zotero.Prefs.clear(CUSTOM_AUTO_OPEN_PREF, true);
                 return true;
             } catch (e) {
@@ -94,19 +180,35 @@
             }
         }
 
-        function clearCustomModelConfig() {
+        function saveCustomModelConfig(config) {
+            return saveProviderConfig(config, { setDefault: true });
+        }
+
+        function deleteProviderConfig(providerName) {
             try {
                 const Zotero = getHostZotero();
-                if (!Zotero || !Zotero.Prefs) {
+                const registry = ensureAIProvidersRegistry();
+                if (!Zotero || !Zotero.Prefs || !registry) {
                     return false;
                 }
-
-                Zotero.Prefs.clear(CUSTOM_CONFIG_PREF, true);
+                const normalizedName = String(providerName || '').trim();
+                const nextProviders = getAllProviderConfigs().filter((provider) => provider.name !== normalizedName);
+                const nextDefaultName = getDefaultProviderName() === normalizedName ? nextProviders[0]?.name || '' : getDefaultProviderName();
+                registry.saveProviders(nextProviders, nextDefaultName);
+                Zotero.Prefs.clear(CUSTOM_AUTO_OPEN_PREF, true);
                 return true;
             } catch (e) {
-                console.error('[ZoteroHelper] 清空自定义模型配置失败:', e);
+                console.error('[ZoteroHelper] 删除 provider 配置失败:', e);
                 return false;
             }
+        }
+
+        function clearCustomModelConfig() {
+            const defaultProviderName = getDefaultProviderName();
+            if (defaultProviderName) {
+                return deleteProviderConfig(defaultProviderName);
+            }
+            return true;
         }
 
         function shouldAutoOpenCustomProviderDialog() {
@@ -207,59 +309,34 @@
         window.ZoteroHelper = {
             getHostZotero,
             getStoredCustomModelConfig,
+            getAllProviderConfigs,
+            getProviderConfigByName,
+            getDefaultProviderName,
+            getDefaultChatModel,
+            getProviderMenuItems,
+            setDefaultProvider,
+            saveProviderConfig,
+            deleteProviderConfig,
             formatCustomEndpoint,
             saveCustomModelConfig,
             clearCustomModelConfig,
             shouldAutoOpenCustomProviderDialog,
             clearCustomProviderAutoOpenFlag,
 
-            // 检查登录状态
             checkLoginStatus: function () {
-                try {
-                    const Zotero = getHostZotero();
-                    return Zotero && Zotero.VibeDBSync && Zotero.VibeDBSync.isLoggedIn ? Zotero.VibeDBSync.isLoggedIn() : false;
-                } catch (e) {
-                    console.error('[ZoteroHelper] 检查登录状态失败:', e);
-                    return false;
-                }
+                return true;
             },
 
-            // 获取用户余额
             getUserBalance: async function () {
-                try {
-                    const Zotero = getHostZotero();
-                    if (!Zotero || !Zotero.VibeDBSync || !Zotero.VibeDBSync.getUserBalance) {
-                        return null;
-                    }
-                    return await Zotero.VibeDBSync.getUserBalance();
-                } catch (e) {
-                    console.error('[ZoteroHelper] 获取余额失败:', e);
-                    return null;
-                }
+                return {
+                    credits: null,
+                    credits_used: 0,
+                    aiWorkflowBypass: true
+                };
             },
 
-            // 打开登录面板
             openLoginPanel: function () {
-                try {
-                    const Zotero = getHostZotero();
-                    if (!Zotero) {
-                        console.error('[ZoteroHelper] 无法访问 Zotero 对象');
-                        return false;
-                    }
-
-                    const win = Zotero.getMainWindow();
-                    if (win && win.ZoteroPane && win.ZoteroPane.toggleCloudSyncPanel) {
-                        const cloudSyncButton = win.document.getElementById('zotero-tb-cloud-sync');
-                        if (cloudSyncButton) {
-                            win.ZoteroPane.toggleCloudSyncPanel(cloudSyncButton);
-                            return true;
-                        }
-                    }
-                    return false;
-                } catch (e) {
-                    console.error('[ZoteroHelper] 打开登录面板失败:', e);
-                    return false;
-                }
+                return false;
             },
 
             // 获取 Supabase 配置
@@ -276,112 +353,14 @@
             },
 
             // 获取当前生效的自定义 OpenAI 兼容模型配置
+            getActiveCustomModelConfig: function () {
+                return getActiveCustomModelConfig();
+            },
+
             getCustomModelConfig: function () {
                 return getActiveCustomModelConfig();
             }
         };
-
-        (function installCustomProviderRuntimeOverrides() {
-            const Zotero = getHostZotero();
-            const sync = Zotero?.VibeDBSync;
-
-            if (!Zotero || !sync || sync.__viberoCustomProviderPatched) {
-                return;
-            }
-
-            const fakeExpiresAt = Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60;
-
-            function ensureCustomProviderSession(target) {
-                if (!target._currentUser) {
-                    target._currentUser = {
-                        id: 'custom-provider-local-user',
-                        email: 'custom-provider@local.test'
-                    };
-                }
-
-                if (!target._supabaseSession) {
-                    target._supabaseSession = {
-                        access_token: 'custom-provider-local-token',
-                        refresh_token: 'custom-provider-local-refresh',
-                        expires_at: fakeExpiresAt,
-                        expires_in: 365 * 24 * 60 * 60,
-                        token_type: 'bearer',
-                        user: target._currentUser
-                    };
-                }
-            }
-
-            function hasCustomProviderConfig() {
-                return !!window.ZoteroHelper?.getCustomModelConfig?.();
-            }
-
-            sync.__viberoCustomProviderPatched = true;
-            sync.__viberoCustomProviderOriginals = {
-                isLoggedIn: sync.isLoggedIn,
-                ensureLoggedIn: sync.ensureLoggedIn,
-                getUserBalance: sync.getUserBalance,
-                deductCredits: sync.deductCredits,
-                getAccessToken: sync.getAccessToken
-            };
-
-            sync.isLoggedIn = function (...args) {
-                if (hasCustomProviderConfig()) {
-                    ensureCustomProviderSession(this);
-                    return true;
-                }
-
-                const original = sync.__viberoCustomProviderOriginals.isLoggedIn;
-                return original ? original.apply(this, args) : false;
-            };
-
-            sync.ensureLoggedIn = function (...args) {
-                if (hasCustomProviderConfig()) {
-                    ensureCustomProviderSession(this);
-                    return true;
-                }
-
-                const original = sync.__viberoCustomProviderOriginals.ensureLoggedIn;
-                return original ? original.apply(this, args) : false;
-            };
-
-            sync.getUserBalance = async function (...args) {
-                if (hasCustomProviderConfig()) {
-                    ensureCustomProviderSession(this);
-                    return {
-                        credits: 999999,
-                        credits_used: 0,
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString(),
-                        customProviderBypass: true
-                    };
-                }
-
-                const original = sync.__viberoCustomProviderOriginals.getUserBalance;
-                return original ? await original.apply(this, args) : null;
-            };
-
-            sync.deductCredits = async function (...args) {
-                if (hasCustomProviderConfig()) {
-                    ensureCustomProviderSession(this);
-                    return true;
-                }
-
-                const original = sync.__viberoCustomProviderOriginals.deductCredits;
-                return original ? await original.apply(this, args) : false;
-            };
-
-            sync.getAccessToken = async function (...args) {
-                if (hasCustomProviderConfig()) {
-                    ensureCustomProviderSession(this);
-                    return 'custom-provider-local-token';
-                }
-
-                const original = sync.__viberoCustomProviderOriginals.getAccessToken;
-                return original ? await original.apply(this, args) : null;
-            };
-
-            console.log('[AIChatHTML] Custom provider runtime overrides installed');
-        })();
 
         (function installCustomAIProviderForwarder() {
             const originalFetch = window.fetch.bind(window);
@@ -527,14 +506,15 @@
         (function installCustomProviderConfigUI() {
             const state = {
                 initialized: false,
-                els: null
+                els: null,
+                selectedProviderName: ''
             };
 
             function getConfigLabel(config) {
-                if (!config || !config.modelName) {
+                if (!config || !config.name || !config.modelName) {
                     return 'Custom Provider';
                 }
-                return `Provider · ${config.modelName}`;
+                return `${config.name} · ${config.modelName}`;
             }
 
             function truncateText(text, maxLength = 120) {
@@ -543,6 +523,21 @@
                     return '';
                 }
                 return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}…` : normalized;
+            }
+
+            function getProviders() {
+                return window.ZoteroHelper?.getAllProviderConfigs?.() || [];
+            }
+
+            function getDefaultProviderNameSafe() {
+                return window.ZoteroHelper?.getStoredCustomModelConfig?.()?.name || '';
+            }
+
+            function getSelectedProvider() {
+                if (!state.selectedProviderName) {
+                    return null;
+                }
+                return window.ZoteroHelper?.getProviderConfigByName?.(state.selectedProviderName) || null;
             }
 
             function setStatus(type, message) {
@@ -560,6 +555,7 @@
                 }
 
                 return normalizeCustomConfig({
+                    name: state.els.providerName.value,
                     baseUrl: state.els.baseUrl.value,
                     apiKey: state.els.apiKey.value,
                     modelName: state.els.modelName.value
@@ -572,14 +568,54 @@
                 }
 
                 const normalized = normalizeCustomConfig(config, false) || {
+                    name: '',
                     baseUrl: '',
                     apiKey: '',
                     modelName: ''
                 };
 
+                state.els.providerName.value = normalized.name || '';
                 state.els.baseUrl.value = normalized.baseUrl || '';
                 state.els.apiKey.value = normalized.apiKey || '';
                 state.els.modelName.value = normalized.modelName || '';
+                if (state.els.defaultProvider) {
+                    state.els.defaultProvider.checked = !!normalized.name && normalized.name === getDefaultProviderNameSafe();
+                }
+            }
+
+            function syncProviderSelect(preferredProviderName = '') {
+                if (!state.els?.providerSelect) {
+                    return;
+                }
+
+                const providers = getProviders();
+                const defaultProviderName = getDefaultProviderNameSafe();
+                const nextSelectedName = preferredProviderName
+                    || state.selectedProviderName
+                    || defaultProviderName
+                    || providers[0]?.name
+                    || '';
+
+                state.els.providerSelect.innerHTML = '';
+
+                const blankOption = document.createElement('option');
+                blankOption.value = '';
+                blankOption.textContent = providers.length ? '新建 Provider…' : '暂无 Provider，请新建';
+                state.els.providerSelect.appendChild(blankOption);
+
+                for (const provider of providers) {
+                    const option = document.createElement('option');
+                    option.value = provider.name;
+                    option.textContent = provider.name === defaultProviderName
+                        ? `${provider.name} (默认)`
+                        : provider.name;
+                    state.els.providerSelect.appendChild(option);
+                }
+
+                state.selectedProviderName = providers.some((provider) => provider.name === nextSelectedName)
+                    ? nextSelectedName
+                    : '';
+                state.els.providerSelect.value = state.selectedProviderName;
             }
 
             function refreshTriggerLabel() {
@@ -591,7 +627,7 @@
                 state.els.trigger.textContent = getConfigLabel(savedConfig);
                 state.els.trigger.classList.toggle('configured', !!savedConfig);
                 state.els.trigger.title = savedConfig
-                    ? `当前 Custom Provider: ${savedConfig.modelName || '已配置'}`
+                    ? `当前 Custom Provider: ${savedConfig.name || savedConfig.modelName || '已配置'}`
                     : '打开 Custom Provider 配置';
             }
 
@@ -600,18 +636,18 @@
                     return;
                 }
 
-                const savedConfig = window.ZoteroHelper?.getStoredCustomModelConfig?.();
-                fillForm(savedConfig);
+                syncProviderSelect(getDefaultProviderNameSafe());
+                fillForm(getSelectedProvider() || window.ZoteroHelper?.getStoredCustomModelConfig?.());
                 refreshTriggerLabel();
-                setStatus('info', savedConfig
-                    ? '当前配置会用于 AI Chat 与论文总结/思维导图调用；PDF 结构提取仍依赖 MinerU 云端或本地服务。'
-                    : '填写 OpenAI 兼容接口信息后，可直接保存并验证。');
+                setStatus('info', getProviders().length
+                    ? '可管理多个 provider。默认 provider 会用于解析流程，Chat 内切换只影响当前会话。'
+                    : '填写 OpenAI 兼容接口信息后，可直接保存第一个 provider。');
 
                 state.els.overlay.hidden = false;
                 state.els.trigger.classList.add('active');
                 window.requestAnimationFrame(() => {
-                    state.els.baseUrl.focus();
-                    state.els.baseUrl.select();
+                    state.els.providerName.focus();
+                    state.els.providerName.select();
                 });
             }
 
@@ -683,7 +719,7 @@
                         'X-API-Provider': 'huoshan'
                     },
                     body: JSON.stringify({
-                        model: 'doubao',
+                        model: config.modelName || config.model,
                         stream: false,
                         messages: [
                             {
@@ -706,7 +742,7 @@
             async function handleDirectTest() {
                 const config = normalizeCustomConfig(readFormConfig(), true);
                 if (!config) {
-                    setStatus('error', '请先填写完整的 Base URL、API Key 和模型名称。');
+                    setStatus('error', '请先填写完整的 Provider 名称、Base URL、API Key 和模型名称。');
                     return;
                 }
 
@@ -723,38 +759,90 @@
             async function handleSave() {
                 const config = normalizeCustomConfig(readFormConfig(), true);
                 if (!config) {
-                    setStatus('error', '请先填写完整的 Base URL、API Key 和模型名称。');
+                    setStatus('error', '请先填写完整的 Provider 名称、Base URL、API Key 和模型名称。');
                     return;
                 }
 
-                if (!window.ZoteroHelper?.saveCustomModelConfig?.(config)) {
+                const setDefault = !getProviders().length || !!state.els.defaultProvider?.checked;
+                if (!window.ZoteroHelper?.saveProviderConfig?.(config, { setDefault })) {
                     setStatus('error', '保存配置失败，请检查 Prefs 是否可写。');
                     return;
                 }
 
+                state.selectedProviderName = config.name;
+                syncProviderSelect(config.name);
+                fillForm(window.ZoteroHelper?.getProviderConfigByName?.(config.name) || config);
                 refreshTriggerLabel();
-                setStatus('pending', '配置已保存，正在验证请求转发...');
+                setStatus('pending', setDefault
+                    ? '配置已保存，正在验证默认 provider 的请求转发...'
+                    : '配置已保存，正在验证当前 provider 的直连可用性...');
 
                 try {
-                    const summary = await verifySavedForwarding(config);
-                    setStatus('success', `配置已保存并验证通过：${summary || '转发成功'}`);
+                    const summary = setDefault
+                        ? await verifySavedForwarding(config)
+                        : await directProviderTest(config);
+                    setStatus('success', setDefault
+                        ? `配置已保存并验证通过：${summary || '转发成功'}`
+                        : `Provider 已保存并通过直连验证：${summary || '连接成功'}`);
                     window.dispatchEvent(new CustomEvent('vibero-custom-provider-config-updated', { detail: config }));
                 } catch (e) {
                     console.error('[AIChatHTML] Saved custom provider verification failed:', e);
-                    setStatus('error', `配置已保存，但转发验证失败：${e.message || '未知错误'}`);
+                    setStatus('error', setDefault
+                        ? `配置已保存，但转发验证失败：${e.message || '未知错误'}`
+                        : `配置已保存，但直连验证失败：${e.message || '未知错误'}`);
                 }
             }
 
             function handleClear() {
-                if (!window.ZoteroHelper?.clearCustomModelConfig?.()) {
-                    setStatus('error', '清空配置失败，请稍后重试。');
+                const providerName = state.selectedProviderName || readFormConfig()?.name;
+                if (!providerName || !window.ZoteroHelper?.deleteProviderConfig?.(providerName)) {
+                    setStatus('error', '删除 provider 失败，请稍后重试。');
                     return;
                 }
 
-                fillForm(null);
+                const nextDefaultProviderName = getDefaultProviderNameSafe();
+                state.selectedProviderName = nextDefaultProviderName;
+                syncProviderSelect(nextDefaultProviderName);
+                fillForm(getSelectedProvider());
                 refreshTriggerLabel();
-                setStatus('info', '已清空 custom provider 配置。');
+                setStatus('info', `已删除 provider「${providerName}」。`);
                 window.dispatchEvent(new CustomEvent('vibero-custom-provider-config-cleared'));
+            }
+
+            function handleProviderSelect(event) {
+                state.selectedProviderName = event.target.value || '';
+                fillForm(getSelectedProvider());
+                setStatus('info', state.selectedProviderName
+                    ? `已载入 provider「${state.selectedProviderName}」。`
+                    : '当前为新建 provider 模式。');
+            }
+
+            function handleCreateProvider() {
+                state.selectedProviderName = '';
+                syncProviderSelect('');
+                fillForm(null);
+                setStatus('info', '请输入新的 provider 信息。');
+                state.els.providerName.focus();
+            }
+
+            function handleSetDefaultProvider() {
+                const providerName = state.selectedProviderName || readFormConfig()?.name;
+                if (!providerName) {
+                    setStatus('error', '请先选择一个已保存的 provider。');
+                    return;
+                }
+                if (!window.ZoteroHelper?.setDefaultProvider?.(providerName)) {
+                    setStatus('error', '设置默认 provider 失败。');
+                    return;
+                }
+                syncProviderSelect(providerName);
+                fillForm(getSelectedProvider());
+                refreshTriggerLabel();
+                setStatus('success', `已将「${providerName}」设为默认 provider。`);
+                const provider = getSelectedProvider();
+                if (provider) {
+                    window.dispatchEvent(new CustomEvent('vibero-custom-provider-config-updated', { detail: provider }));
+                }
             }
 
             function handleKeydown(event) {
@@ -822,6 +910,36 @@
                 const body = document.createElement('div');
                 body.className = 'vibero-custom-provider-body';
 
+                const providerToolbar = document.createElement('div');
+                providerToolbar.className = 'vibero-custom-provider-toolbar';
+
+                const providerSelectField = document.createElement('label');
+                providerSelectField.className = 'vibero-custom-provider-field';
+                const providerSelectLabel = document.createElement('span');
+                providerSelectLabel.textContent = 'Saved Providers';
+                const providerSelect = document.createElement('select');
+                providerSelect.id = 'vibero-custom-provider-select';
+                providerSelectField.appendChild(providerSelectLabel);
+                providerSelectField.appendChild(providerSelect);
+                providerToolbar.appendChild(providerSelectField);
+
+                const providerToolbarActions = document.createElement('div');
+                providerToolbarActions.className = 'vibero-custom-provider-actions-right';
+                const createProvider = document.createElement('button');
+                createProvider.id = 'vibero-custom-provider-create';
+                createProvider.type = 'button';
+                createProvider.className = 'secondary';
+                createProvider.textContent = 'New';
+                const makeDefault = document.createElement('button');
+                makeDefault.id = 'vibero-custom-provider-make-default';
+                makeDefault.type = 'button';
+                makeDefault.className = 'secondary';
+                makeDefault.textContent = 'Set Default';
+                providerToolbarActions.appendChild(createProvider);
+                providerToolbarActions.appendChild(makeDefault);
+                providerToolbar.appendChild(providerToolbarActions);
+                body.appendChild(providerToolbar);
+
                 function createField(labelText, inputId, inputType, placeholder) {
                     const label = document.createElement('label');
                     label.className = 'vibero-custom-provider-field';
@@ -840,6 +958,12 @@
                     return input;
                 }
 
+                const providerName = createField(
+                    'Provider Name',
+                    'vibero-custom-provider-name',
+                    'text',
+                    'OpenAI / OpenRouter / My Lab'
+                );
                 const baseUrl = createField(
                     'API Base URL',
                     'vibero-custom-provider-base-url',
@@ -858,6 +982,17 @@
                     'text',
                     'gpt-4o-mini'
                 );
+
+                const defaultProviderLabel = document.createElement('label');
+                defaultProviderLabel.className = 'vibero-custom-provider-checkbox';
+                const defaultProvider = document.createElement('input');
+                defaultProvider.id = 'vibero-custom-provider-default';
+                defaultProvider.type = 'checkbox';
+                const defaultProviderText = document.createElement('span');
+                defaultProviderText.textContent = '保存后设为默认 provider';
+                defaultProviderLabel.appendChild(defaultProvider);
+                defaultProviderLabel.appendChild(defaultProviderText);
+                body.appendChild(defaultProviderLabel);
 
                 const status = document.createElement('div');
                 status.id = 'vibero-custom-provider-status';
@@ -909,9 +1044,14 @@
                 return {
                     panel,
                     close,
+                    providerSelect,
+                    createProvider,
+                    makeDefault,
+                    providerName,
                     baseUrl,
                     apiKey,
                     modelName,
+                    defaultProvider,
                     status,
                     test,
                     save,
@@ -941,6 +1081,20 @@
                             <button type="button" class="vibero-custom-provider-close" aria-label="关闭">×</button>
                         </div>
                         <div class="vibero-custom-provider-body">
+                            <div class="vibero-custom-provider-toolbar">
+                                <label class="vibero-custom-provider-field">
+                                    <span>Saved Providers</span>
+                                    <select id="vibero-custom-provider-select"></select>
+                                </label>
+                                <div class="vibero-custom-provider-actions-right">
+                                    <button id="vibero-custom-provider-create" type="button" class="secondary">New</button>
+                                    <button id="vibero-custom-provider-make-default" type="button" class="secondary">Set Default</button>
+                                </div>
+                            </div>
+                            <label class="vibero-custom-provider-field">
+                                <span>Provider Name</span>
+                                <input id="vibero-custom-provider-name" type="text" placeholder="OpenAI / OpenRouter / My Lab" />
+                            </label>
                             <label class="vibero-custom-provider-field">
                                 <span>API Base URL</span>
                                 <input id="vibero-custom-provider-base-url" type="url" placeholder="https://api.openai.com/v1" />
@@ -952,6 +1106,10 @@
                             <label class="vibero-custom-provider-field">
                                 <span>Model Name</span>
                                 <input id="vibero-custom-provider-model-name" type="text" placeholder="gpt-4o-mini" />
+                            </label>
+                            <label class="vibero-custom-provider-checkbox">
+                                <input id="vibero-custom-provider-default" type="checkbox" />
+                                <span>保存后设为默认 provider</span>
                             </label>
                             <div id="vibero-custom-provider-status" class="vibero-custom-provider-status" data-type="info">使用快捷键 Cmd/Ctrl + , 可随时打开或关闭这个配置页。</div>
                             <div class="vibero-custom-provider-shortcuts">
@@ -977,9 +1135,14 @@
                     overlay,
                     panel: overlay.querySelector('.vibero-custom-provider-panel'),
                     close: overlay.querySelector('.vibero-custom-provider-close'),
+                    providerSelect: overlay.querySelector('#vibero-custom-provider-select'),
+                    createProvider: overlay.querySelector('#vibero-custom-provider-create'),
+                    makeDefault: overlay.querySelector('#vibero-custom-provider-make-default'),
+                    providerName: overlay.querySelector('#vibero-custom-provider-name'),
                     baseUrl: overlay.querySelector('#vibero-custom-provider-base-url'),
                     apiKey: overlay.querySelector('#vibero-custom-provider-api-key'),
                     modelName: overlay.querySelector('#vibero-custom-provider-model-name'),
+                    defaultProvider: overlay.querySelector('#vibero-custom-provider-default'),
                     status: overlay.querySelector('#vibero-custom-provider-status'),
                     test: overlay.querySelector('#vibero-custom-provider-test'),
                     save: overlay.querySelector('#vibero-custom-provider-save'),
@@ -988,9 +1151,14 @@
 
                 const missingCriticalNode = !queriedEls.panel
                     || !queriedEls.close
+                    || !queriedEls.providerSelect
+                    || !queriedEls.createProvider
+                    || !queriedEls.makeDefault
+                    || !queriedEls.providerName
                     || !queriedEls.baseUrl
                     || !queriedEls.apiKey
                     || !queriedEls.modelName
+                    || !queriedEls.defaultProvider
                     || !queriedEls.status
                     || !queriedEls.test
                     || !queriedEls.save
@@ -1009,6 +1177,9 @@
 
                 trigger.addEventListener('click', openPanel);
                 state.els.close.addEventListener('click', closePanel);
+                state.els.providerSelect.addEventListener('change', handleProviderSelect);
+                state.els.createProvider.addEventListener('click', handleCreateProvider);
+                state.els.makeDefault.addEventListener('click', handleSetDefaultProvider);
                 state.els.test.addEventListener('click', handleDirectTest);
                 state.els.save.addEventListener('click', handleSave);
                 state.els.clear.addEventListener('click', handleClear);
@@ -1018,6 +1189,8 @@
                     }
                 });
 
+                syncProviderSelect(getDefaultProviderNameSafe());
+                fillForm(getSelectedProvider() || window.ZoteroHelper?.getStoredCustomModelConfig?.());
                 refreshTriggerLabel();
                 state.initialized = true;
             }
@@ -1197,7 +1370,8 @@
                 background: #4b5563;
             }
 
-            .vibero-custom-provider-field input {
+            .vibero-custom-provider-field input,
+            .vibero-custom-provider-field select {
                 border-color: #4b5563;
                 background: #111827;
                 color: #f9fafb;
@@ -1371,13 +1545,22 @@
             gap: 6px;
         }
 
+        .vibero-custom-provider-toolbar {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
         .vibero-custom-provider-field span {
             font-size: 12px;
             font-weight: 600;
             color: #374151;
         }
 
-        .vibero-custom-provider-field input {
+        .vibero-custom-provider-field input,
+        .vibero-custom-provider-field select {
             width: 100%;
             min-height: 40px;
             padding: 10px 12px;
@@ -1389,9 +1572,23 @@
             outline: none;
         }
 
-        .vibero-custom-provider-field input:focus {
+        .vibero-custom-provider-field input:focus,
+        .vibero-custom-provider-field select:focus {
             border-color: #1890ff;
             box-shadow: 0 0 0 3px rgba(24, 144, 255, 0.14);
+        }
+
+        .vibero-custom-provider-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: #374151;
+        }
+
+        .vibero-custom-provider-checkbox input {
+            width: 16px;
+            height: 16px;
         }
 
         .vibero-custom-provider-status {
