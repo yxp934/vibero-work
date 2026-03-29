@@ -176199,6 +176199,52 @@ class Reader {
     }
   }
 
+  async _waitForPrimaryPDFPages(timeoutMs = 2000) {
+    if (this._primaryView?.initializedPromise) {
+      await this._primaryView.initializedPromise;
+    }
+    const pdfApp = this._primaryView?._iframeWindow?.PDFViewerApplication;
+    if (!pdfApp?.pdfDocument || !pdfApp?.pdfViewer) {
+      return null;
+    }
+    if (pdfApp.pdfViewer.pagesPromise) {
+      await Promise.race([pdfApp.pdfViewer.pagesPromise, new Promise(resolve => {
+        setTimeout(resolve, timeoutMs);
+      })]);
+    }
+    return pdfApp;
+  }
+
+  async _extractCharsDataListFromPDF(pdfApp) {
+    const charsDataList = [];
+    const totalPages = pdfApp?.pdfViewer?.pagesCount || 0;
+    for (let i = 0; i < totalPages; i++) {
+      const pageData = await pdfApp.pdfDocument.getPageData({
+        pageIndex: i
+      });
+      for (let j = 0; j < pageData.chars.length; j++) {
+        const char = pageData.chars[j];
+        char.offset = charsDataList.length;
+        char.pageIndex = i;
+        charsDataList.push(char);
+      }
+    }
+    return charsDataList;
+  }
+
+  _hydrateCachedCharsDataInBackground() {
+    void (async () => {
+      const pdfApp = await this._waitForPrimaryPDFPages(10000);
+      if (!pdfApp) {
+        return;
+      }
+      const charsDataList = await this._extractCharsDataListFromPDF(pdfApp);
+      this._summaryManager.setCharsDataList(charsDataList);
+    })().catch(error => {
+      console.warn('[reader/reader.js] 缓存字符数据后台补全失败:', error);
+    });
+  }
+
   /**
    * Flow 进度上报：保证进度单调递增，避免并行任务互相覆盖造成“回退”
    * @param {{status?: string, percent?: number|null, message?: string}} next
@@ -176315,9 +176361,9 @@ class Reader {
       // 渲染数据
       await this._loadCachedDataAndRender(loadedData);
 
-      // 加载 GitHub 仓库信息
+      // GitHub 仓库补全不阻塞首屏渲染，避免网络请求把“正在渲染数据...”卡住
       if (this._loadGitHubRepoFromCache) {
-        await this._loadGitHubRepoFromCache();
+        void this._loadGitHubRepoFromCache();
       }
 
       // console.log('[reader/reader.js] ✅ 自动加载完成');
@@ -176622,8 +176668,8 @@ class Reader {
     try {
       // console.log('[reader/reader.js] 使用缓存数据:', loadedData);
       await this._loadCachedDataAndRender(loadedData);
-      // 从缓存加载 GitHub 仓库信息
-      await this._loadGitHubRepoFromCache();
+      // GitHub 仓库补全不阻塞缓存渲染完成
+      void this._loadGitHubRepoFromCache();
       this._setFlowProgress({
         status: 'done',
         percent: 100,
@@ -177135,55 +177181,42 @@ class Reader {
       // console.log('[reader/reader.js] ✅ githubUrl 已恢复:', loadedData.githubUrl);
     }
 
-    // 等待视图初始化完成（特别是 PDFViewerApplication）
-    if (this._primaryView && this._primaryView.initializedPromise) {
-      await this._primaryView.initializedPromise;
+    // 仅等待 viewer 进入可显示状态，不再在首屏同步抽取整篇 charsData
+    const pdfApp = await this._waitForPrimaryPDFPages();
+
+    // 设置 hierarchicalData（缓存已自带 rects，可先直接渲染）
+    this._summaryManager.setHierarchicalData(Array.isArray(loadedData.hierarchicalData) ? loadedData.hierarchicalData : []);
+    // console.log('[reader/reader.js] hierarchicalData:', this._summaryManager.getHierarchicalData());
+
+    // 刷新侧边栏摘要视图和大纲视图
+    this._readerRef.current?.refreshArticleSummaryView?.();
+    this._readerRef.current?.refreshOutlineView?.();
+
+    // ✅ 从数据库恢复 VibeCards
+    if (loadedData.summaryCards || loadedData.flashCards) {
+      const allVibeCards = [...(loadedData.summaryCards || []), ...(loadedData.flashCards || [])];
+
+      // 使用setVibeCards触发渲染
+      if (this._vibeCardManager) {
+        this._vibeCardManager.setVibeCards(allVibeCards);
+      }
     }
 
-    // 设置 hierarchicalData（需要先获取 charsDataList）
-    // 加载 charsDataList（渲染需要）
-    let charsDataList = [];
-    if (!this._primaryView._iframeWindow || !this._primaryView._iframeWindow.PDFViewerApplication) {
-      console.error('[reader/reader.js] PDFViewerApplication 不可用，跳过字符数据解析');
-    } else {
-      for (let i = 0; i < this._primaryView._iframeWindow.PDFViewerApplication.pdfViewer.pagesCount; i++) {
-        let pageData = await this._primaryView._iframeWindow.PDFViewerApplication.pdfDocument.getPageData({
-          pageIndex: i
-        });
-        for (let j = 0; j < pageData.chars.length; j++) {
-          let char = pageData.chars[j];
-          char.offset = charsDataList.length;
-          char.pageIndex = i;
-          charsDataList.push(char);
-        }
-      }
-      this._summaryManager.setCharsDataList(charsDataList);
+    // 渲染 bbox 覆盖层与思维导图
+    this._renderBboxOverlays();
+    this._buildAndRenderMindMapView();
 
-      // 设置 hierarchicalData（包含计算好的 rects）
-      this._summaryManager.setHierarchicalData(loadedData.hierarchicalData);
-      // console.log('[reader/reader.js] hierarchicalData:', this._summaryManager.getHierarchicalData());
-
-      // 刷新侧边栏摘要视图和大纲视图
-      this._readerRef.current?.refreshArticleSummaryView?.();
-      this._readerRef.current?.refreshOutlineView?.();
-      // 渲染 bbox 覆盖层
-      this._renderBboxOverlays();
-
-      // ✅ 从数据库恢复 VibeCards
-      if (loadedData.summaryCards || loadedData.flashCards) {
-        const allVibeCards = [...(loadedData.summaryCards || []), ...(loadedData.flashCards || [])];
-
-        // 使用setVibeCards触发渲染
-        if (this._vibeCardManager) {
-          this._vibeCardManager.setVibeCards(allVibeCards);
-        }
-      }
-
-      // 构建并渲染思维导图
-      this._buildAndRenderMindMapView();
-
-      // console.log('[reader/reader.js] ✅ 数据库数据加载并渲染完成');
+    // pagesPromise 超时后若页面稍后才完成挂载，再补一次覆盖层渲染
+    if (pdfApp?.pdfViewer?.pagesPromise) {
+      void pdfApp.pdfViewer.pagesPromise.then(() => {
+        this._renderBboxOverlays();
+      }).catch(() => {});
     }
+
+    // charsData 仅用于后续交互，放到后台补全，避免首屏灰屏
+    this._hydrateCachedCharsDataInBackground();
+
+    // console.log('[reader/reader.js] ✅ 数据库数据加载并渲染完成');
   }
 
   /**
