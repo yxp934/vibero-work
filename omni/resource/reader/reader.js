@@ -177033,7 +177033,7 @@ class Reader {
         className: 'reparse-dialog-title'
       }, `重新解析页面 ${pageLabel}？`), /*#__PURE__*/external_React_default().createElement('p', {
         className: 'reparse-dialog-description'
-      }, '将使用 1 Credit 重新解析该页面。')), /*#__PURE__*/external_React_default().createElement('div', {
+      }, '将重新解析该页面，并覆盖当前页的总结结果。')), /*#__PURE__*/external_React_default().createElement('div', {
         className: 'reparse-dialog-actions'
       }, /*#__PURE__*/external_React_default().createElement('button', {
         className: 'reparse-dialog-button reparse-dialog-button-cancel',
@@ -185656,15 +185656,6 @@ Return only the JSON array, no other explanation. If nothing to filter, return e
         throw new Error(`第 ${pageIdx + 1} 页没有可解析段落`);
       }
 
-      // 单页重解析按 1 页计费，先检查余额再进入删除/解析流程
-      const balanceCheck = await this._checkBalance(1, {
-        unitCost: 1,
-        usageLabel: '单页重解析'
-      });
-      if (!balanceCheck) {
-        return false;
-      }
-
       // 1) 只清理该页 SummaryCard（保留 FlashCard 和其他数据）
       await this._clearSinglePageSummaryCards(pageIdx);
 
@@ -185753,9 +185744,7 @@ Return only the JSON array, no other explanation. If nothing to filter, return e
       // 6) 保存缓存，确保 UI 与 DB 保持一致
       await this._saveParsedDataToVibeDB();
 
-      // 7) 单页重解析完成后扣减 1 credit，并记录 usage（1 页）
-      await this._deductBalance(balanceCheck, 1);
-      if (this._logUsage) this._logUsage(1);
+      // 7) 单页重解析完成后刷新界面
       this._renderBboxOverlays();
       this._readerRef.current?.refreshArticleSummaryView?.();
       this._readerRef.current?.refreshOutlineView?.();
