@@ -1,4 +1,6 @@
 .DS_Store
-build/
+/build/
 *.log
 *.tmp
+.ace-tool/
+.worktrees/
